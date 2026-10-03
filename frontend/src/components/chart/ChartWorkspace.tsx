@@ -439,9 +439,11 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       )}
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-[5]" />
-        <button onClick={resetView} title="Reset zoom and pan to the default view"
-          className="absolute bottom-9 left-28 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-panel/90 px-2.5 py-1 text-[11px] font-semibold text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-95">
-          <span aria-hidden className="text-sm leading-none">⟲</span>Reset view
+        <button onClick={resetView} title="Reset view" aria-label="Reset view"
+          className="absolute bottom-9 left-28 z-10 grid h-8 w-8 place-items-center rounded-lg border border-line bg-panel/90 text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-90">
+          <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
+          </svg>
         </button>
       </div>
       <div className={cx("border-t border-line", !layers.rsi && "hidden")}>
