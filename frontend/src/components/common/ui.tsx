@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { DataStatus, Signal } from "../../types";
-import { actionTone, cx, timeAgo } from "../../lib/format";
+import { actionTone, cx, hexA, timeAgo } from "../../lib/format";
 
 export function ActionBadge({ action, className }: { action?: Signal["action"] | string | null; className?: string }) {
   if (!action) return <span className="text-faint">—</span>;
@@ -54,12 +54,15 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
   );
 }
 
-export function Toggle({ on, onChange, label, color }: { on: boolean; onChange: () => void; label: string; color?: string }) {
+/** ON: filled tint, coloured border, a tick and full-strength text. OFF: hollow ring, dim text, no fill. */
+export function Toggle({ on, onChange, label, color = "#5b7cff" }: { on: boolean; onChange: () => void; label: string; color?: string }) {
   return (
     <button onClick={onChange} aria-pressed={on}
-      className={cx("flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition",
-        on ? "border-line bg-raised text-ink" : "border-transparent text-faint hover:text-mute")}>
-      <span className="h-2 w-2 rounded-full" style={{ background: on ? color ?? "rgb(var(--primary))" : "rgb(var(--line))" }} />
+      className={cx("flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition active:scale-[.97]",
+        on ? "font-semibold text-ink" : "border-line/70 font-medium text-faint hover:text-mute")}
+      style={on ? { background: hexA(color, 0.16), borderColor: hexA(color, 0.7), boxShadow: `inset 0 0 0 1px ${hexA(color, 0.12)}` } : undefined}>
+      <span aria-hidden className="grid h-3.5 w-3.5 place-items-center rounded-full border text-[9px] leading-none"
+        style={on ? { background: color, borderColor: color, color: "#0a0c11" } : { borderColor: "rgb(var(--faint))" }}>{on ? "✓" : ""}</span>
       {label}
     </button>
   );

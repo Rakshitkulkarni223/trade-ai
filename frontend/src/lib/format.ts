@@ -20,3 +20,10 @@ export const actionTone = (a?: string | null) =>
   a === "LONG" ? "text-up border-up/40 bg-up/10" : a === "SHORT" ? "text-down border-down/40 bg-down/10"
     : "text-warn border-warn/40 bg-warn/10";
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+
+/** "#rrggbb" + alpha -> rgba(), for tints built from a swatch colour. */
+export function hexA(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}

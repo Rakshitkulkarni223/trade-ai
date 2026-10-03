@@ -1,6 +1,7 @@
 import { useWorkspace } from "../../store/useWorkspace";
 import type { Analysis, LiquidityLevel } from "../../types";
-import { cx, fmtPrice } from "../../lib/format";
+import { cx, fmtPrice, hexA } from "../../lib/format";
+import { LEVEL_STYLE } from "../../lib/liquidityStyle";
 
 const NAMES: Record<LiquidityLevel["kind"], string> = {
   PDH: "Prev day high", PDL: "Prev day low", PWH: "Prev week high", PWL: "Prev week low",
@@ -21,7 +22,7 @@ export default function LiquidityMap({ analysis }: { analysis: Analysis }) {
     return (
       <button onClick={() => setHighlight(on ? null : { kind: "liquidity", id: l.id })}
         className={cx("group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-raised", on && "bg-raised ring-1 ring-liq/60")}>
-        <span className="w-9 shrink-0 rounded bg-liq/10 px-1 py-0.5 text-center text-[10px] font-bold text-liq">{l.kind}</span>
+        <span className="w-9 shrink-0 rounded px-1 py-0.5 text-center text-[10px] font-bold" style={{ background: hexA(LEVEL_STYLE[l.kind].color, 0.16), color: LEVEL_STYLE[l.kind].color, border: `1px solid ${hexA(LEVEL_STYLE[l.kind].color, 0.5)}` }}>{l.kind}</span>
         <span className="min-w-0 flex-1 text-xs leading-tight text-mute group-hover:text-ink">{NAMES[l.kind]}</span>
         {l.status === "swept" && <span className="rounded bg-liq/15 px-1 py-0.5 text-[9px] font-semibold text-liq">SWEPT ✓</span>}
         <span className="tnum w-[4.5rem] shrink-0 text-right text-xs text-ink">{fmtPrice(l.price, p)}</span>

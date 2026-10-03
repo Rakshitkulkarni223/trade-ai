@@ -6,16 +6,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveFeed, liveKey } from "../../hooks/useLiveFeed";
 import { useWorkspace } from "../../store/useWorkspace";
 import type { Analysis, Candle, ChartRef, LiquidityLevel } from "../../types";
-import { cx, fmtPrice } from "../../lib/format";
+import { cx, fmtPrice, hexA } from "../../lib/format";
+import { LEVEL_STYLE } from "../../lib/liquidityStyle";
 
 // Colours mirror the CSS tokens (canvas and chart options cannot read CSS variables directly).
 const C = {
   bg: "#0a0c11", text: "#8b93a7", grid: "#141822", up: "#26be82", down: "#f45064", primary: "#5b7cff",
   liq: "#38bdf8", fvg: "#fb923c", struct: "#a78bfa", warn: "#f5a524", ai: "#8b5cf6",
-};
-
-const KIND_LAYER: Record<LiquidityLevel["kind"], "prevDay" | "prevWeek" | "swing" | "equal"> = {
-  PDH: "prevDay", PDL: "prevDay", PWH: "prevWeek", PWL: "prevWeek", BSL: "swing", SSL: "swing", EQH: "equal", EQL: "equal",
 };
 
 /** The chart gets the few levels that matter now; the Liquidity Map panel lists everything. Levels at the same
@@ -64,6 +61,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
   const drawRef = useRef<() => void>(() => {});
   const lastKey = useRef("");
   const liveRef = useRef<Candle | null>(null);
+  const pickedRef = useRef<{ level: LiquidityLevel; kinds: string[]; ids: string[] }[]>([]);
   const focusRef = useRef(true);       // default view: price scale fits the recent candles, not an old spike
   const candlesRef = useRef<Candle[]>(candles);
   candlesRef.current = candles;
@@ -187,6 +185,36 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         ctx.fillStyle = "rgba(251,146,60,.95)"; ctx.font = "600 10px Inter, sans-serif";
         ctx.fillText(`${g.type === "bullish" ? "Bull" : "Bear"} FVG`, Math.max(x1 + 4, 4), y1 + 11);
       }
+      // Liquidity levels: start at the candle that formed them, run right until swept (then a cross), tagged at the start.
+      for (const g of pickedRef.current) {
+        const l = g.level, st = LEVEL_STYLE[l.kind], yy = y(l.price);
+        if (yy === null) continue;
+        const on = hl?.kind === "liquidity" && g.ids.includes(hl.id), swept = l.status === "swept";
+        const x1 = Math.max(0, x(l.t) ?? 0);
+        let x2 = plotRight, cross = false;
+        if (swept && l.swept_t) { const sx = x(l.swept_t); if (sx !== null) { x2 = Math.min(sx, plotRight); cross = true; } }
+        if (x1 >= plotRight || x2 <= 0) continue;
+        const color = on ? "#ffffff" : st.color;
+        ctx.save();
+        ctx.globalAlpha = swept && !on ? 0.6 : 1;
+        ctx.strokeStyle = color; ctx.lineCap = "round"; ctx.setLineDash(st.dash);
+        ctx.lineWidth = on ? st.width + 1.4 : st.width;
+        const offsets = st.double ? [-2.2, 2.2] : [0];
+        for (const o of offsets) { ctx.beginPath(); ctx.moveTo(x1, yy + o); ctx.lineTo(x2, yy + o); ctx.stroke(); }
+        ctx.setLineDash([]);
+        if (cross) {        // swept: a small cross where price took the liquidity
+          ctx.lineWidth = 1.8; ctx.beginPath();
+          ctx.moveTo(x2 - 4, yy - 4); ctx.lineTo(x2 + 4, yy + 4); ctx.moveTo(x2 + 4, yy - 4); ctx.lineTo(x2 - 4, yy + 4); ctx.stroke();
+        }
+        // tag at the start of the line
+        const label = g.kinds.join("/");
+        ctx.font = "700 10px Inter, sans-serif";
+        const tw = ctx.measureText(label).width + 10, tx = Math.min(x1 + 4, plotRight - tw - 4), ty = yy - 15;
+        ctx.fillStyle = hexA(st.color, 0.2); ctx.strokeStyle = hexA(st.color, 0.75); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(tx, ty, tw, 14, 4); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = on ? "#ffffff" : st.color; ctx.fillText(label, tx + 5, ty + 10.5);
+        ctx.restore();
+      }
       if (L.structure) for (const e of a.structure.events.filter((ev, i, all) => i >= all.length - 6 || (hl?.kind === "structure" && hl.id === ev.id))) {
         const yy = y(e.level); if (yy === null) continue;
         const x1: number = x(e.level_t) ?? 0, x2 = x(e.t);
@@ -302,14 +330,17 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
     const add = (price: number, color: string, title: string, style: LineStyle, width: 1 | 2 | 3 = 1) =>
       linesRef.current.push(s.candle!.createPriceLine({ price, color, title, lineStyle: style, lineWidth: width, axisLabelVisible: true }));
 
-    const visible = analysis.liquidity.levels.filter((l) => layers[KIND_LAYER[l.kind]]);
-    for (const g of pickLevels(visible, analysis.price, precision, highlight?.kind === "liquidity" ? highlight.id : null)) {
-      const l = g.level, name = g.kinds.join("/");
-      const on = highlight?.kind === "liquidity" && g.ids.includes(highlight.id);
-      const swept = l.status === "swept";
-      add(l.price, on ? "#ffffff" : swept ? "rgba(56,189,248,.5)" : C.liq, swept ? `${name} ✓ swept` : name,
-        swept ? LineStyle.Dotted : LineStyle.Dashed, on ? 3 : swept ? 1 : 2);
+    // Liquidity: the coloured tag on the price axis comes from a price line with its line hidden; the line itself is drawn
+    // on the overlay canvas (see draw) so every kind of level can have its own look and start where it formed.
+    const visible = analysis.liquidity.levels.filter((l) => layers[LEVEL_STYLE[l.kind].layer]);
+    const groups = pickLevels(visible, analysis.price, precision, highlight?.kind === "liquidity" ? highlight.id : null);
+    pickedRef.current = groups;
+    for (const g of groups) {
+      const l = g.level, name = g.kinds.join("/"), swept = l.status === "swept";
+      linesRef.current.push(s.candle!.createPriceLine({ price: l.price, color: swept ? hexA(LEVEL_STYLE[l.kind].color, 0.55) : LEVEL_STYLE[l.kind].color,
+        title: swept ? `${name} ✓` : name, lineVisible: false, axisLabelVisible: true }));
     }
+    drawRef.current();
     // Entry / SL / TP exist only for a confirmed setup. While the status is WAIT there is nothing to draw:
     // scenario levels on every chart invite trades that are not there.
     if (layers.plan && analysis.signal.action !== "WAIT") {
@@ -328,7 +359,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       markers.push({ time: t(e.t), position: bull ? "belowBar" : "aboveBar", shape: bull ? "arrowUp" : "arrowDown", color: C.struct, text: e.type });
     }
     for (const l of analysis.liquidity.levels.filter((x) => x.status === "swept").sort((a, b) => (b.swept_t ?? 0) - (a.swept_t ?? 0)).slice(0, 3)) {
-      if (l.swept_t && layers[KIND_LAYER[l.kind]]) {
+      if (l.swept_t && layers[LEVEL_STYLE[l.kind].layer]) {
         const sell = l.side === "sell_side";
         markers.push({ time: t(l.swept_t), position: sell ? "belowBar" : "aboveBar", shape: "circle", color: C.liq, text: `${sell ? "SSL" : "BSL"} swept` });
       }
