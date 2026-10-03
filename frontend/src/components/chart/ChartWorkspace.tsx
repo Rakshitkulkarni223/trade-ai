@@ -440,8 +440,8 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-[5]" />
         <button onClick={resetView} title="Reset view" aria-label="Reset view"
-          className="absolute bottom-9 left-28 z-10 grid h-8 w-8 place-items-center rounded-lg border border-line bg-panel/90 text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-90">
-          <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          className="absolute bottom-0.5 right-6 z-10 grid h-6 w-6 place-items-center rounded-md border border-line bg-panel/90 text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-90">
+          <svg aria-hidden viewBox="0 0 24 24" className="h-[15px] w-[15px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
           </svg>
         </button>
