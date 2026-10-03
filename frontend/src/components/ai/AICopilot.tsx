@@ -14,26 +14,27 @@ export default function AICopilot({ onClose }: { onClose?: () => void }) {
   const status = useQuery({ queryKey: ["ai-status"], queryFn: aiStatus, staleTime: 60_000 });
   const { send, why } = useAI();
 
+  const header = (
+    <>
+      {isPending && <Skeleton className="h-56" />}
+      {error && !data && <ErrorState error={error} onRetry={() => refetch()} />}
+      {data && (<>
+        <DataStatusBanner status={data.data_status} />
+        <AIInsightCard analysis={data} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
+      </>)}
+    </>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold"><span className="grid h-6 w-6 place-items-center rounded-lg bg-ai text-xs text-white">AI</span>Market Copilot</h2>
-          <p className="mt-0.5 text-[11px] text-faint">{symbol} · {timeframe} · {status.data?.llm ? `${status.data.provider} model` : "offline explainer"}</p>
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold"><span className="grid h-6 w-6 place-items-center rounded-lg bg-ai text-[11px] font-bold text-white">AI</span>Market Copilot</h2>
+          <p className="mt-0.5 truncate text-[11px] text-faint">{symbol} · {timeframe} · {status.data?.llm ? `${status.data.provider} model` : "offline explainer"}</p>
         </div>
         {onClose && <button onClick={onClose} className="btn-ghost !px-2.5 !py-1.5" aria-label="Close copilot">✕</button>}
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {isPending && <Skeleton className="h-48" />}
-        {error && !data && <ErrorState error={error} onRetry={() => refetch()} />}
-        {data && (<>
-          <DataStatusBanner status={data.data_status} />
-          <AIInsightCard analysis={data} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
-        </>)}
-      </div>
-      <div className="h-[44%] min-h-[260px] shrink-0 border-t border-line pt-3">
-        <AIChat className="h-full" />
-      </div>
+      <AIChat className="min-h-0 flex-1" header={header} />
     </div>
   );
 }

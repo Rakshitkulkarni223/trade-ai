@@ -22,19 +22,20 @@ CTX = {"price": 84576.01, "plan": {"stop": 87299.01}, "rsi": 43.2}
 async def test_grounded_answer_is_used(monkeypatch):
     monkeypatch.setattr(llm, "get_provider", lambda: Stub("Price is 84,576.01 and the stop is 87,299.01. RSI 43.2."))
     out = await orchestrator._llm_text("q", CTX, [], "analyze")
-    assert out is not None and out[1] == "stub"
+    assert out.text and out.provider == "stub" and out.note is None
 
 
 @pytest.mark.asyncio
 async def test_invented_price_is_rejected(monkeypatch):
     monkeypatch.setattr(llm, "get_provider", lambda: Stub("Target is 95,000, a clear buy."))
-    assert await orchestrator._llm_text("q", CTX, [], "analyze") is None
+    out = await orchestrator._llm_text("q", CTX, [], "analyze")
+    assert out.text is None and "could not be verified" in out.note
 
 
 @pytest.mark.asyncio
 async def test_user_supplied_level_is_allowed(monkeypatch):
     monkeypatch.setattr(llm, "get_provider", lambda: Stub("If price falls to 83,000 the idea is unaffected."))
-    assert await orchestrator._llm_text("q", CTX, [], "what if it hits 83,000?") is not None
+    assert (await orchestrator._llm_text("q", CTX, [], "what if it hits 83,000?")).text
 
 
 @pytest.mark.asyncio
@@ -43,7 +44,15 @@ async def test_provider_failure_falls_back(monkeypatch):
         async def complete(self, *a, **k):
             raise RuntimeError("quota")
     monkeypatch.setattr(llm, "get_provider", lambda: Boom(""))
-    assert await orchestrator._llm_text("q", CTX, [], "x") is None
+    out = await orchestrator._llm_text("q", CTX, [], "x")
+    assert out.text is None and "could not be reached" in out.note
+
+
+def test_indicator_periods_are_not_mistaken_for_prices():
+    ctx = {"price": 2686.35, "indicators": {"ema50": 2690.1}}
+    assert llm.unverified_numbers("Price is below the 200 EMA and above the 50 EMA (2,690.10).", ctx) == []
+    assert llm.unverified_numbers("It could reach 3,000.", ctx) == [3000.0]
+    assert llm.unverified_numbers("Support near 200.", {"price": 210.0}) == [200.0]   # period exemption only far below price
 
 
 def test_no_order_code_anywhere():

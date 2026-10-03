@@ -77,22 +77,28 @@ def _llm_context(run: Run, extra: Optional[dict] = None) -> dict:
     return ctx
 
 
-async def _llm_text(prompt: str, context: dict, history: list[dict], user_text: str) -> Optional[tuple[str, str]]:
+class LlmResult:
+    """What the model produced, or why its answer was held back. `text` is None when the caller should fall back."""
+    def __init__(self, text: Optional[str] = None, provider: Optional[str] = None, note: Optional[str] = None):
+        self.text, self.provider, self.note = text, provider, note
+
+
+async def _llm_text(prompt: str, context: dict, history: list[dict], user_text: str) -> LlmResult:
     provider = llm.get_provider()
     if provider is None:
-        return None
+        return LlmResult()
     messages = history[-6:] + [{"role": "user",
                                 "content": f"CONTEXT (backend-computed, authoritative):\n{json.dumps(context)}\n\n{prompt}"}]
     try:
         text = (await provider.complete(llm.SYSTEM_PROMPT, messages)).strip()
     except Exception as exc:                       # network, quota, bad key: degrade, never break the feature
         log.warning("LLM call failed (%s); using offline explainer", exc)
-        return None
+        return LlmResult(provider=provider.name, note="the model could not be reached")
     bad = llm.unverified_numbers(text, context, user_text)
     if bad or not text:
         log.warning("LLM answer rejected; untraceable numbers: %s", bad[:5])
-        return None
-    return text, provider.name
+        return LlmResult(provider=provider.name, note="it contained a number that could not be verified against the chart data" if bad else "it came back empty")
+    return LlmResult(text, provider.name)
 
 
 def card(a: dict) -> dict:
@@ -111,8 +117,8 @@ async def analyze(symbol: str, timeframe: str, cfg: Optional[RiskConfig] = None)
     text, source = offline, "offline"
     out = await _llm_text("Write the Market Copilot summary of this analysis for the user.",
                           _llm_context(run), [], "")
-    if out:
-        text, source = out
+    if out.text:
+        text, source = out.text, out.provider
     slim = {k: v for k, v in a.items() if k != "series"}
     return {
         "symbol": run.inst.symbol, "name": run.inst.name, "timeframe": timeframe,
@@ -224,13 +230,15 @@ async def chat(db: Session, symbol: str, timeframe: str, message: str, action: O
     else:
         prompt = f"The user asked: {user_text!r}. Answer using only the context."
     out = await _llm_text(prompt, _llm_context(run, extra_ctx), history, user_text)
-    if out:
-        reply, source = out
+    if out.text:
+        reply, source = out.text, out.provider
     elif intent == "general":
         reply = (base_text + "\n\nYou can also ask me to find liquidity, explain the trend, show the entry and "
                  "invalidation, explain why I'm saying WAIT, or compare with another market.")
 
     payload.update(refs=refs, source=source, disclaimer=expl.DISCLAIMER)
+    if out.note:
+        payload["llm_note"] = f"{out.provider} answer held back: {out.note}"
     _store(db, conv, user_text, reply, payload, a["context"])
     return {"conversation_id": conv.id, "reply": reply, "payload": payload}
 

@@ -127,6 +127,9 @@ def get_provider() -> Optional[Provider]:
 
 
 # --------------------------------------------------------------------------- number guard
+# Standard indicator look-backs ("50 EMA", "200-day"). Far below the price scale they are not prices.
+INDICATOR_PERIODS = {5, 9, 12, 14, 20, 21, 26, 50, 100, 200}
+
 _NUM = re.compile(r"(?<![\w.])\$?₹?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\w])")
 
 
@@ -165,6 +168,8 @@ def unverified_numbers(text: str, context: Any, extra_text: str = "", rel_tol: f
     for m in _NUM.finditer(text):
         val = float(m.group(1).replace(",", ""))
         if val < floor:
+            continue
+        if val in INDICATOR_PERIODS and isinstance(price, (int, float)) and val < price / 5:
             continue
         if not any(abs(val - a) <= max(abs(a) * rel_tol, 0.011) for a in allowed):
             bad.append(val)

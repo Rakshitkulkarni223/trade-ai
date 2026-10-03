@@ -76,7 +76,7 @@ export interface CompareRow {
 }
 export interface ChatPayload {
   intent: string; symbol?: string; timeframe?: Timeframe; refused?: boolean; source: string;
-  card?: AnalysisCard; compare?: CompareRow[]; refs?: ChartRef[]; data_status?: DataStatus; disclaimer?: string;
+  card?: AnalysisCard; llm_note?: string; compare?: CompareRow[]; refs?: ChartRef[]; data_status?: DataStatus; disclaimer?: string;
 }
 export interface ChatMessage { role: "user" | "assistant"; content: string; payload?: ChatPayload | null; pending?: boolean }
 export interface ChatResponse { conversation_id: number; reply: string; payload: ChatPayload }

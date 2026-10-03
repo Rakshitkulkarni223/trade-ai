@@ -21,7 +21,7 @@ export function TrendText({ trend }: { trend?: string | null }) {
 export function DataStatusBanner({ status }: { status?: DataStatus }) {
   if (!status?.note) return null;
   return (
-    <div className={cx("flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
+    <div className={cx("flex items-start gap-2 rounded-xl border px-3 py-1.5 text-[11px] leading-snug",
       status.stale ? "border-warn/40 bg-warn/10 text-warn" : "border-line bg-raised text-mute")}>
       <span aria-hidden>{status.stale ? "⚠" : "◐"}</span>
       <span>{status.note} <span className="text-faint">Last candle {timeAgo(status.as_of)}.</span></span>
