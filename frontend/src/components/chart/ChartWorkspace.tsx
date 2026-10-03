@@ -171,6 +171,35 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
           ctx.stroke();
         };
         run(a.series.st_up, "#26be82"); run(a.series.st_dn, "#f45064");
+
+        // Buy / Sell signals: a dot where the Supertrend flips, and a solid pill (white border, pointer) like the TradingView script
+        ctx.font = "800 11px Inter, sans-serif";
+        for (const sg of a.supertrend.signals) {
+          const xx = x(sg.t), yy = y(sg.price);
+          if (xx === null || yy === null || xx < -30 || xx > plotRight + 10) continue;
+          const buy = sg.type === "buy", fill = buy ? "#15a05c" : "#e0364a", text = buy ? "BUY" : "SELL";
+          const w = ctx.measureText(text).width + 18, ph = 20, gap = 14;
+          const plotBottom = h - ts.height() - 4;                    // above the time axis
+          // Buy normally hangs below the support line and Sell sits above the resistance line; flip when that would leave the chart
+          let below = buy;
+          if (below && yy + gap + ph > plotBottom) below = false;
+          if (!below && yy - gap - ph < 4) below = true;
+          const top = below ? yy + gap : yy - gap - ph;
+          const left = Math.min(Math.max(xx - w / 2, 2), plotRight - w - 2);
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.fillStyle = fill; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.6; ctx.lineJoin = "round";
+          ctx.beginPath(); ctx.arc(xx, yy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();          // the dot on the line
+          ctx.beginPath();
+          ctx.roundRect(left, top, w, ph, 5);
+          ctx.fill(); ctx.stroke();
+          const edge = below ? top : top + ph, tipY = below ? top - 7 : top + ph + 7;               // pointer toward the dot
+          ctx.beginPath(); ctx.moveTo(xx - 5, edge); ctx.lineTo(xx, tipY); ctx.lineTo(xx + 5, edge); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillRect(xx - 4, below ? top - 0.5 : top + ph - 2, 8, 2.5);                            // hide the seam between pill and pointer
+          ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(text, left + w / 2, top + ph / 2 + 0.5);
+          ctx.restore();
+        }
       }
       if (L.fvg) for (const g of a.fvg) {
         const y1 = y(g.high), y2 = y(g.low);
@@ -364,10 +393,6 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         markers.push({ time: t(l.swept_t), position: sell ? "belowBar" : "aboveBar", shape: "circle", color: C.liq, text: `${sell ? "SSL" : "BSL"} swept` });
       }
     }
-    if (layers.supertrend) for (const sg of analysis.supertrend.signals) {
-      const buy = sg.type === "buy";
-      markers.push({ time: t(sg.t), position: buy ? "belowBar" : "aboveBar", shape: buy ? "arrowUp" : "arrowDown", color: buy ? C.up : C.down, text: buy ? "Buy" : "Sell" });
-    }
     const st = analysis.signal.state;
     if (st && analysis.signal.action !== "WAIT") {
       const long = analysis.signal.action === "LONG";
@@ -412,10 +437,12 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
           )}
         </div>
       )}
-      <button onClick={resetView} title="Reset zoom and pan"
-        className="absolute right-[4.5rem] top-1.5 z-10 rounded-md border border-line bg-panel/80 px-2 py-0.5 text-[11px] font-medium text-mute backdrop-blur hover:text-ink">⟲ Reset</button>
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-[5]" />
+        <button onClick={resetView} title="Reset zoom and pan to the default view"
+          className="absolute bottom-9 left-28 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-panel/90 px-2.5 py-1 text-[11px] font-semibold text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-95">
+          <span aria-hidden className="text-sm leading-none">⟲</span>Reset view
+        </button>
       </div>
       <div className={cx("border-t border-line", !layers.rsi && "hidden")}>
         <div className="px-3 pt-1 text-[10px] font-medium uppercase tracking-wider text-faint">RSI 14</div>
