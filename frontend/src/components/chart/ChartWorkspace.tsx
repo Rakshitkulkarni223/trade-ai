@@ -165,6 +165,15 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
     return () => { cancelAnimationFrame(raf); chart.remove(); rsiChart.remove(); chartRef.current = null; rsiChartRef.current = null; seriesRef.current = {}; };
   }, []);
 
+  // Normal view: latest ~130 candles with a little room on the right, price scale back on auto-fit.
+  const resetView = () => {
+    const chart = chartRef.current, n = candlesRef.current.length;
+    if (!chart || n === 0) return;
+    chart.priceScale("right").applyOptions({ autoScale: true });
+    rsiChartRef.current?.priceScale("right").applyOptions({ autoScale: true });
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 130), to: n + 8 });
+  };
+
   // ---- live updates: touch only the forming candle; the periodic refresh rebuilds everything else
   const drawLive = (c: Candle) => {
     const s = seriesRef.current;
@@ -210,14 +219,13 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
     const rsi = byTime(A?.series.rsi);
     s.rsi!.setData(candles.map((c) => (rsi.has(c.t) ? { time: t(c.t), value: rsi.get(c.t)! } : { time: t(c.t) })));
 
-    const key = `${symbol}|${timeframe}`;
     const lastC = candles[candles.length - 1];
     if (liveRef.current && liveRef.current.t >= lastC.t && dataKey === liveKey(symbol, timeframe)) drawLive(liveRef.current);
     else liveRef.current = null;
-    if (lastKey.current !== key) {
-      lastKey.current = key;
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length - 130), to: candles.length + 8 });
-    }
+    // Reset when the candles on screen switch to another symbol/timeframe. Keyed on the data, not the selection:
+    // while the new history loads the old candles stay up, and resetting then would be undone when the new ones arrive.
+    const shown = dataKey ?? `${symbol}|${timeframe}`;
+    if (lastKey.current !== shown) { lastKey.current = shown; resetView(); }
     drawRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candles, analysis, precision, symbol, timeframe, dataKey]);
@@ -294,6 +302,8 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         {layers.ema && (<><span className="text-[#f5c451]">EMA 20</span><span className="text-primary">EMA 50</span></>)}
         {layers.vwap && <span className="text-[#e879f9]">VWAP</span>}
       </div>
+      <button onClick={resetView} title="Reset zoom and pan"
+        className="absolute right-[4.5rem] top-1.5 z-10 rounded-md border border-line bg-panel/80 px-2 py-0.5 text-[11px] font-medium text-mute backdrop-blur hover:text-ink">⟲ Reset</button>
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-[5]" />
       </div>
