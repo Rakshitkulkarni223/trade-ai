@@ -33,6 +33,7 @@ export function useLiveFeed(symbol: string, tf: Timeframe, handlers: Handlers) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(`${proto}//${location.host}/ws/market/${encodeURIComponent(symbol)}?timeframe=${tf}`);
       ws.onmessage = (ev) => {
+        if (closed) return;          // a replaced connection (old timeframe/symbol) must never touch the new chart
         let m: { type: string; mode?: string; candle?: Candle; closed?: boolean; price?: number; state?: string };
         try { m = JSON.parse(ev.data); } catch { return; }
         if (m.type === "hello") { attempt = 0; setLive({ key, state: m.mode === "stream" ? "live" : "polling" }); }

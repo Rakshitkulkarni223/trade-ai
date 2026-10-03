@@ -1,6 +1,6 @@
 import {
   ColorType, CrosshairMode, LineStyle, createChart,
-  type IChartApi, type IPriceLine, type ISeriesApi, type LogicalRange, type SeriesMarker, type Time, type UTCTimestamp,
+  type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi, type LogicalRange, type SeriesMarker, type Time, type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveFeed, liveKey } from "../../hooks/useLiveFeed";
@@ -39,6 +39,9 @@ function pickLevels(levels: LiquidityLevel[], price: number, precision: number, 
 /** `dataKey` says which symbol|timeframe `candles` belong to, so a live update can never be drawn on another market's history. */
 interface Props { candles: Candle[]; analysis?: Analysis; precision: number; loading?: boolean; dataKey?: string }
 
+/** Default view: show ~70 candles, but fit the price axis to the last ~50 plus the plan, so the latest action is readable. */
+const VIEW_BARS = 70, FOCUS_BARS = 50, RIGHT_PAD_BARS = 10;
+
 const TF_SECONDS: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1H": 3600, "4H": 14400, "1D": 86400, "1W": 604800 };
 
 const t = (n: number) => n as UTCTimestamp;
@@ -61,6 +64,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
   const drawRef = useRef<() => void>(() => {});
   const lastKey = useRef("");
   const liveRef = useRef<Candle | null>(null);
+  const focusRef = useRef(true);       // default view: price scale fits the recent candles, not an old spike
   const candlesRef = useRef<Candle[]>(candles);
   candlesRef.current = candles;
   const [hover, setHover] = useState<Candle | null>(null);
@@ -84,12 +88,40 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
     const rsiChart = createChart(rsiEl, { ...base, autoSize: true, timeScale: { ...base.timeScale, visible: false }, rightPriceScale: { borderColor: C.grid, scaleMargins: { top: 0.12, bottom: 0.12 } } });
     chartRef.current = chart; rsiChartRef.current = rsiChart;
 
+    // Once you zoom or drag, stop forcing the focused fit and let the chart autoscale to what you are looking at.
+    let down: { x: number; y: number } | null = null;
+    const release = () => { focusRef.current = false; };
+    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
+    const onMove = (e: PointerEvent) => { if (down && e.buttons === 1 && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) release(); };
+    const onUp = () => { down = null; };
+    el.addEventListener("wheel", release, { passive: true });
+    el.addEventListener("pointerdown", onDown); el.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
+
     const s = seriesRef.current;
-    s.candle = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: true });
+    s.candle = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: true,
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        if (!focusRef.current) return original();
+        const recent = candlesRef.current.slice(-FOCUS_BARS);
+        if (recent.length === 0) return original();
+        const live = liveRef.current;
+        let lo = Math.min(...recent.map((c) => c.l), live ? live.l : Infinity);
+        let hi = Math.max(...recent.map((c) => c.h), live ? live.h : -Infinity);
+        const span = hi - lo || hi * 0.001;
+        // plan levels join the fit only when they're close enough not to flatten the candles
+        const a = analysisRef.current;
+        if (a && layersRef.current.plan) {
+          for (const v of [a.plan.entry, a.plan.stop, ...a.plan.targets.map((t) => t.price)]) {
+            if (v > lo - span * 1.5 && v < hi + span * 1.5) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+          }
+        }
+        const pad = (hi - lo) * 0.08;
+        return { priceRange: { minValue: lo - pad, maxValue: hi + pad } };
+      } });
     s.vol = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false });
     chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     const line = (color: string, width: 1 | 2 = 1, style = LineStyle.Solid) =>
-      chart.addLineSeries({ color, lineWidth: width, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, lineStyle: style });
+      chart.addLineSeries({ color, lineWidth: width, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, lineStyle: style,
+        autoscaleInfoProvider: () => null });   // overlays (EMA, VWAP, bands) must not stretch the price axis
     s.ema20 = line("#f5c451"); s.ema50 = line("#5b7cff", 2); s.vwap = line("#e879f9", 1, LineStyle.Dashed);
     s.bbU = line("#475569", 1, LineStyle.Dotted); s.bbL = line("#475569", 1, LineStyle.Dotted);
     s.rsi = rsiChart.addLineSeries({ color: C.ai, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
@@ -162,24 +194,29 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => { cancelAnimationFrame(raf); chart.remove(); rsiChart.remove(); chartRef.current = null; rsiChartRef.current = null; seriesRef.current = {}; };
+    return () => { cancelAnimationFrame(raf); el.removeEventListener("wheel", release); el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); chart.remove(); rsiChart.remove(); chartRef.current = null; rsiChartRef.current = null; seriesRef.current = {}; };
   }, []);
 
-  // Normal view: latest ~130 candles with a little room on the right, price scale back on auto-fit.
+  // Normal view: the latest candles with room on the right, price scale fitted to recent action + plan.
   const resetView = () => {
     const chart = chartRef.current, n = candlesRef.current.length;
     if (!chart || n === 0) return;
+    focusRef.current = true;
     chart.priceScale("right").applyOptions({ autoScale: true });
     rsiChartRef.current?.priceScale("right").applyOptions({ autoScale: true });
-    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 130), to: n + 8 });
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VIEW_BARS), to: n + RIGHT_PAD_BARS });
   };
 
   // ---- live updates: touch only the forming candle; the periodic refresh rebuilds everything else
   const drawLive = (c: Candle) => {
     const s = seriesRef.current;
     if (!s.candle) return;
-    s.candle.update({ time: t(c.t), open: c.o, high: c.h, low: c.l, close: c.c });
-    s.vol?.update({ time: t(c.t), value: c.v, color: c.c >= c.o ? "rgba(38,190,130,.35)" : "rgba(244,80,100,.35)" });
+    try {
+      s.candle.update({ time: t(c.t), open: c.o, high: c.h, low: c.l, close: c.c });
+      s.vol?.update({ time: t(c.t), value: c.v, color: c.c >= c.o ? "rgba(38,190,130,.35)" : "rgba(244,80,100,.35)" });
+    } catch {
+      liveRef.current = null;       // a stray update older than the series: drop it, the next refresh rebuilds the bar
+    }
   };
   const matches = dataKey === liveKey(symbol, timeframe);
   useLiveFeed(symbol, timeframe, {
