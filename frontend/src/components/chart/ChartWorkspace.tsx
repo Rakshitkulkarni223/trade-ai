@@ -48,6 +48,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
   const mainRef = useRef<HTMLDivElement>(null);
   const rsiRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const resetRef = useRef<HTMLButtonElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const rsiChartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{
@@ -142,6 +143,19 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
 
     // overlay canvas: FVG boxes and structure breaks need pixel coordinates, so redraw whenever the view changes
     const canvas = overlayRef.current!;
+    // Keep the Reset icon level with the TradingView logo (bottom-left), and as far in from the plot's right edge
+    // as the logo is from its left edge. Measured from the real logo element so it holds at any size or zoom.
+    const placeReset = () => {
+      const btn = resetRef.current;
+      if (!btn) return;
+      const logo = el.querySelector<HTMLElement>("#tv-attr-logo");
+      const cr = el.getBoundingClientRect(), lr = logo?.getBoundingClientRect();
+      const size = btn.offsetHeight || 28;
+      const bottom = lr && lr.height ? cr.bottom - lr.bottom + (lr.height - size) / 2 : 36;
+      const inset = lr && lr.width ? lr.left - cr.left : 10;
+      btn.style.bottom = `${Math.round(bottom)}px`;
+      btn.style.right = `${Math.round(chart.priceScale("right").width() + inset)}px`;
+    };
     const draw = () => {
       const a = analysisRef.current, ctx = canvas.getContext("2d");
       if (!ctx) return;
@@ -150,6 +164,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; canvas.style.width = `${w}px`; canvas.style.height = `${h}px`; }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
+      placeReset();
       if (!a || !s.candle) return;
       const L = layersRef.current, hl = highlightRef.current;
       const ts = chart.timeScale();
@@ -439,8 +454,8 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       )}
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-[5]" />
-        <button onClick={resetView} title="Reset view" aria-label="Reset view"
-          className="absolute bottom-0.5 right-6 z-10 grid h-6 w-6 place-items-center rounded-md border border-line bg-panel/90 text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-90">
+        <button ref={resetRef} onClick={resetView} title="Reset view" aria-label="Reset view" style={{ bottom: 36, right: 84 }}
+          className="absolute z-10 grid h-7 w-7 place-items-center rounded-md border border-line bg-panel/90 text-mute shadow-lg backdrop-blur transition hover:border-primary/60 hover:text-ink active:scale-90">
           <svg aria-hidden viewBox="0 0 24 24" className="h-[15px] w-[15px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
           </svg>
