@@ -10,6 +10,7 @@ import { DataStatusBanner, ErrorState } from "../components/common/ui";
 import MarketHeader from "../components/market/MarketHeader";
 import { useAnalysisData, useHistory } from "../hooks/useMarketData";
 import { liveKey } from "../hooks/useLiveFeed";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { precisionFor } from "../lib/format";
 import { useWorkspace } from "../store/useWorkspace";
 
@@ -21,6 +22,7 @@ export default function StockDetails() {
 
   const history = useHistory(symbol, timeframe);
   const analysis = useAnalysisData(symbol, timeframe, accountSize, riskPct);
+  const xl = useMediaQuery("(min-width: 1280px)");
   const candles = history.data?.candles ?? [];
   const a = analysis.data;
   const precision = a?.precision ?? precisionFor(candles[candles.length - 1]?.c);
@@ -50,9 +52,11 @@ export default function StockDetails() {
           </div>
         )}
       </div>
-      <aside className="hidden xl:block">
-        <div className="card sticky top-4 h-[calc(100vh-6rem)] p-4"><AICopilot /></div>
-      </aside>
+      {xl && (
+        <aside>
+          <div className="card sticky top-4 h-[calc(100dvh-6rem)] p-4"><AICopilot /></div>
+        </aside>
+      )}
     </div>
   );
 }

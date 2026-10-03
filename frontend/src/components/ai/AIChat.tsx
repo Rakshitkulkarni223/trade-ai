@@ -57,7 +57,7 @@ function CompareTable({ rows }: { rows: CompareRow[] }) {
 }
 
 function Bubble({ m, onShow }: { m: ChatMessage; onShow: (ref: NonNullable<ChatMessage["payload"]>["refs"]) => void }) {
-  if (m.role === "user") return <div className="rise ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-primary/90 px-3.5 py-2 text-sm text-white">{m.content}</div>;
+  if (m.role === "user") return <div data-role="user" className="rise ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-primary/90 px-3.5 py-2 text-sm text-white">{m.content}</div>;
   const p = m.payload;
   return (
     <div className="rise w-full">
@@ -90,8 +90,12 @@ export default function AIChat({ className, header, showActions = true }: { clas
   const scroller = useRef<HTMLDivElement>(null);
   const seen = useRef(messages.length);
   useEffect(() => {
-    // Only follow the conversation when it grows; opening the panel must not scroll away from the insight card.
-    if (messages.length > seen.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+        // Only when the conversation grows: opening the panel must not scroll away from the insight card.
+    if (messages.length > seen.current) {
+      // Bring the latest question to the top so a long answer is read from its first line, not its last.
+      const asks = scroller.current?.querySelectorAll('[data-role="user"]');
+      asks?.[asks.length - 1]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     seen.current = messages.length;
   }, [messages]);
 

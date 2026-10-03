@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useWorkspace } from "../../store/useWorkspace";
 import AICopilot from "../ai/AICopilot";
 import SymbolSearch from "../market/SymbolSearch";
@@ -25,7 +26,9 @@ export default function AppShell() {
   const { aiOpen, setAiOpen, symbol, timeframe } = useWorkspace();
   const loc = useLocation();
   const [more, setMore] = useState(false);
+  const xl = useMediaQuery("(min-width: 1280px)");
   const onChart = loc.pathname.startsWith("/chart");
+  const docked = onChart && xl;                    // on wide screens the chart page shows the copilot inline
   const onAiPage = loc.pathname === "/ai";
 
   return (
@@ -53,7 +56,7 @@ export default function AppShell() {
         <header className="flex items-center gap-3 border-b border-line bg-bg/80 px-4 py-2.5 backdrop-blur md:px-6">
           <span className="grid h-8 w-8 place-items-center rounded-xl bg-ai text-white lg:hidden"><Icon d="M4 17l5-6 4 4 7-9" /></span>
           <div className="max-w-xl flex-1"><SymbolSearch /></div>
-          <button className={cx("btn-ai ml-auto !py-2", onChart && "xl:hidden", onAiPage && "hidden")} onClick={() => setAiOpen(true)} aria-label="Ask AI">
+          <button className={cx("btn-ai ml-auto !py-2", (docked || onAiPage) && "hidden")} onClick={() => setAiOpen(true)} aria-label="Ask AI">
             <span className="text-base leading-none">✦</span><span className="hidden sm:inline">Ask AI</span>
           </button>
         </header>
@@ -64,10 +67,10 @@ export default function AppShell() {
       </div>
 
       {/* AI as drawer (md+) or bottom sheet (mobile); docked on the chart page at xl */}
-      {aiOpen && (
-        <div className={cx("fixed inset-0 z-50", onChart && "xl:hidden")}>
+      {aiOpen && !docked && (
+        <div className="fixed inset-0 z-50">
           <button className="absolute inset-0 bg-black/60" onClick={() => setAiOpen(false)} aria-label="Close AI panel" />
-          <div className={cx("absolute bg-panel p-4 shadow-2xl", "inset-x-0 bottom-0 h-[88vh] rounded-t-3xl border-t border-line safe-bottom",
+          <div className={cx("absolute bg-panel p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl", "inset-x-0 bottom-0 h-[88dvh] rounded-t-3xl border-t border-line",
             "md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[440px] md:rounded-none md:rounded-l-3xl md:border-l md:border-t-0")}>
             <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line md:hidden" />
             <AICopilot onClose={() => setAiOpen(false)} />
