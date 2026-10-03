@@ -29,6 +29,15 @@ class Snapshot:
     atr: Optional[float]
     volume_ratio: Optional[float]
     vwap: Optional[float]
+    # Supertrend (ATR 10 x 3): current direction, bars since the last flip, length of the run before it
+    st_dir: int = 0                      # 1 up, -1 down, 0 unknown
+    st_flip_ago: Optional[int] = None
+    st_prev_run: Optional[int] = None
+    st_line: Optional[float] = None
+
+
+SUPERTREND_FRESH_BARS = 3     # a Buy/Sell counts as an entry trigger for this many closed candles
+WHIPSAW_BARS = 5              # a flip that follows the previous flip this quickly is noise, not a trend change
 
 
 def _lc(label: str) -> str:
@@ -162,6 +171,39 @@ def _pullback_items(direction: str, c: Candles, snap: Snapshot, st: Structure,
     return items, anchor
 
 
+def _supertrend_agree(direction: str, snap: Snapshot) -> dict:
+    """Required for every setup: the Supertrend must already point the trade's way."""
+    want = 1 if direction == "long" else -1
+    word = "up" if direction == "long" else "down"
+    ok = snap.st_dir == want
+    since = f" for {snap.st_flip_ago} candle(s)" if (ok and snap.st_flip_ago is not None) else ""
+    return _item("supertrend", f"Supertrend is {word}", "pass" if ok else "pending",
+                 (f"Supertrend has been {word}{since}." if ok else
+                  f"Supertrend is {'down' if snap.st_dir == -1 else 'not yet defined' if snap.st_dir == 0 else 'up'}; "
+                  f"it must turn {word} first."),
+                 {"kind": "indicator", "id": "supertrend"}, True)
+
+
+def _supertrend_flip_items(direction: str, snap: Snapshot) -> tuple[list[dict], Optional[float]]:
+    """The Buy / Sell signal itself: a fresh flip, not a whipsaw, with the Supertrend line as the natural stop."""
+    want = 1 if direction == "long" else -1
+    word, label = ("up", "Buy") if direction == "long" else ("down", "Sell")
+    fresh = snap.st_dir == want and snap.st_flip_ago is not None and snap.st_flip_ago <= SUPERTREND_FRESH_BARS
+    items = [_item("supertrend", f"Supertrend {label} signal", "pass" if fresh else "pending",
+                   (f"Supertrend flipped {word} {snap.st_flip_ago} candle(s) ago." if fresh else
+                    f"No fresh {label} signal (a flip must be within the last {SUPERTREND_FRESH_BARS} closed candles)."),
+                   {"kind": "indicator", "id": "supertrend"}, True)]
+    if fresh:
+        calm = snap.st_prev_run is None or snap.st_prev_run >= WHIPSAW_BARS
+        items.append(_item("whipsaw", "Not a whipsaw", "pass" if calm else "pending",
+                           (f"The previous trend lasted {snap.st_prev_run} candles." if calm else
+                            f"The previous trend lasted only {snap.st_prev_run} candles; flips this close together are noise."),
+                           {"kind": "indicator", "id": "supertrend"}, True))
+    else:
+        items.append(_item("whipsaw", "Not a whipsaw", "pending", "Checked once a Buy/Sell signal appears.", None, True))
+    return items, snap.st_line
+
+
 def _common_items(direction: str, snap: Snapshot, fvgs: list[FVG]) -> list[dict]:
     w = _dir_words(direction)
     long = direction == "long"
@@ -203,10 +245,14 @@ def _bucket(items: list[dict]) -> dict:
 
 
 def _evaluate_candidate(setup: str, direction: str, c, snap, st, lm, fvgs):
-    if setup == "liquidity_sweep_reversal":
+    if setup == "supertrend_flip":
+        core, anchor = _supertrend_flip_items(direction, snap)
+    elif setup == "liquidity_sweep_reversal":
         core, anchor = _reversal_items(direction, c, snap, st, lm)
+        core.append(_supertrend_agree(direction, snap))
     else:
         core, anchor = _pullback_items(direction, c, snap, st, fvgs)
+        core.append(_supertrend_agree(direction, snap))
     items = core + _common_items(direction, snap, fvgs)
     required = [i for i in items if i["required"]]
     passed = sum(1 for i in required if i["state"] == "pass")
@@ -218,18 +264,17 @@ def _evaluate_candidate(setup: str, direction: str, c, snap, st, lm, fvgs):
 
 
 def decide(c: Candles, snap: Snapshot, st: Structure, lm: LiquidityMap, fvgs: list[FVG]) -> dict:
-    cands = [_evaluate_candidate(s, d, c, snap, st, lm, fvgs)
-             for s in ("liquidity_sweep_reversal", "trend_pullback") for d in ("long", "short")]
+    order = {"supertrend_flip": 0, "liquidity_sweep_reversal": 1, "trend_pullback": 2}
+    cands = [_evaluate_candidate(s, d, c, snap, st, lm, fvgs) for s in order for d in ("long", "short")]
 
     complete = [x for x in cands if x["complete"]]
     if complete:
-        # reversal wins ties; otherwise the direction aligned with structure
-        complete.sort(key=lambda x: (x["setup"] != "liquidity_sweep_reversal",
-                                     _dir_words(x["direction"])["bias"] != st.trend))
+        # the Supertrend signal first, then a sweep reversal, then a pullback; ties go to the structural direction
+        complete.sort(key=lambda x: (order[x["setup"]], _dir_words(x["direction"])["bias"] != st.trend))
         chosen, action = complete[0], complete[0]["direction"].upper()
     else:
         trend_dir = {"bullish": "long", "bearish": "short"}.get(st.trend)
-        cands.sort(key=lambda x: (-x["passed"], x["direction"] != trend_dir, x["setup"] != "liquidity_sweep_reversal"))
+        cands.sort(key=lambda x: (-x["passed"], x["direction"] != trend_dir, order[x["setup"]]))
         chosen, action = cands[0], "WAIT"
 
     direction = chosen["direction"]

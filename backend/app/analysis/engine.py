@@ -14,7 +14,8 @@ import numpy as np
 
 from . import fair_value_gap, indicators as ind, liquidity, market_structure, signals
 from .candles import Candles, fmt_price as _p
-from .risk import RiskConfig
+from .risk import RiskConfig, position_size
+from .signal_memory import SignalMemory
 from .trade_plan import build_plan
 
 MIN_CANDLES = 60
@@ -36,15 +37,23 @@ def _t(c: Candles, i: int) -> int:
     return int(c.t[max(0, min(i, len(c) - 1))])
 
 
-def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
+def analyse(c_all: Candles, symbol: str, timeframe: str, tf_seconds: int,
             session_offset_s: int = 0, cfg: Optional[RiskConfig] = None,
-            lot_size: float = 0.0) -> dict:
+            lot_size: float = 0.0, memory: Optional[SignalMemory] = None,
+            now: Optional[float] = None) -> dict:
+    """Signals, levels and the plan come from CLOSED candles only. A candle that is still forming can flip a
+    reading back and forth with every tick, which is exactly what makes a signal untrustworthy; the live price is
+    reported separately and the setup waits for the candle to close."""
+    now = time.time() if now is None else now
+    forming = len(c_all) > 0 and int(c_all.t[-1]) + tf_seconds > now
+    c = c_all.slice(0, len(c_all) - 1) if forming else c_all
     n = len(c)
     if n < MIN_CANDLES:
         raise InsufficientData(f"Only {n} candles available; at least {MIN_CANDLES} are needed.")
     cfg = cfg or RiskConfig()
-    price = float(c.c[-1])
-    prec = price_precision(price)
+    live_price = float(c_all.c[-1])
+    price = float(c.c[-1])                  # last closed candle: the reference for entry and structure
+    prec = price_precision(live_price)
 
     # ---- indicators
     ema20, ema50 = ind.ema(c.c, 20), ind.ema(c.c, 50)
@@ -56,13 +65,19 @@ def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
     bb_u, bb_m, bb_l = ind.bollinger(c.c, 20, 2.0)
     macd_line, macd_sig, macd_hist = ind.macd(c.c)
 
-    # A candle that is still forming has only partial volume; judge volume on the last completed one.
-    forming = int(c.t[-1]) + tf_seconds > time.time()
-    vr = vol_ratio[:-1] if forming else vol_ratio
+    # Supertrend (ATR 10, x3, hl2): the trend filter and the Buy / Sell trigger
+    st_trend, st_up, st_dn, st_buy, st_sell = ind.supertrend(c.h, c.l, c.c, 10, 3.0)
+    flips = np.where(st_buy | st_sell)[0]
+    st_dir = int(st_trend[-1])
+    st_line = ind.last(st_up if st_dir == 1 else st_dn)
+
     snap = signals.Snapshot(price=price, ema20=ind.last(ema20), ema50=ind.last(ema50),
                             rsi=ind.last(rsi14), atr=ind.last(atr14),
-                            volume_ratio=ind.last(vr) if c.v[-20:].sum() > 0 else None,
-                            vwap=ind.last(vwap))
+                            volume_ratio=ind.last(vol_ratio) if c.v[-20:].sum() > 0 else None,
+                            vwap=ind.last(vwap), st_dir=st_dir,
+                            st_flip_ago=(n - 1 - int(flips[-1])) if len(flips) else None,
+                            st_prev_run=(int(flips[-1] - flips[-2])) if len(flips) >= 2 else None,
+                            st_line=st_line)
 
     # ---- detectors
     st = market_structure.analyse(c, k=3)
@@ -84,11 +99,19 @@ def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
     if sig["action"] != "WAIT" and snap.atr and plan["risk_per_unit"] / snap.atr > cfg.max_stop_atr:
         signals.gate_wide_stop(sig, plan["risk_per_unit"] / snap.atr, cfg.max_stop_atr)
         plan["status"] = "conditional"
+    state = None
+    if memory is not None:
+        sig, plan, state = memory.apply(f"{symbol}|{timeframe}", sig, plan, c, st_dir)
+        direction = sig["considered_direction"]
+        # account settings can change while a setup is live; levels stay, the size follows the current settings
+        plan["sizing"] = position_size(cfg.equity, cfg.max_risk_per_trade_pct, plan["entry"], plan["stop"],
+                                       cfg.max_position_pct, lot_size)
+    sig["state"] = state
     if sig["action"] == "WAIT":
-        sig["invalidation"] = (f"The {direction} idea is invalid if price trades beyond {_p(plan['stop'])}"
-                               " before confirmation arrives.")
+        sig["invalidation"] = ("No setup is active, so there is nothing to invalidate yet. "
+                               "Levels appear once every required condition is met on a closed candle.")
     else:
-        sig["invalidation"] = (f"The setup is invalidated if price closes {'below' if direction == 'long' else 'above'}"
+        sig["invalidation"] = (f"The setup is invalidated if a candle closes {'below' if direction == 'long' else 'above'}"
                                f" {_p(plan['stop'])}.")
 
     # ---- serialise detectors with timestamps
@@ -118,8 +141,11 @@ def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
     }
 
     context = {  # the §22 shape, sent to the AI instead of raw candles
-        "symbol": symbol, "timeframe": timeframe, "price": round(price, prec),
+        "symbol": symbol, "timeframe": timeframe, "price": round(live_price, prec),
+        "last_closed_close": round(price, prec), "analysis_basis": "closed candles only",
         "as_of": int(c.t[-1]), "trend": st.trend,
+        "supertrend": {"direction": "up" if st_dir == 1 else "down" if st_dir == -1 else "unknown",
+                       "flipped_bars_ago": snap.st_flip_ago, "line": _r(st_line, prec)},
         "rsi": indicators_snapshot["rsi"], "atr": indicators_snapshot["atr"],
         "liquidity": {
             "buy_side": [round(l.price, prec) for l in lm.active("buy_side")],
@@ -143,12 +169,17 @@ def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
                    "direction_considered": direction, "summary": sig["summary"],
                    "waiting_for": sig["waiting_for"], "invalidation": sig["invalidation"]},
         "evidence": {k: [i["label"] + ": " + i["detail"] for i in v] for k, v in sig["evidence"].items()},
-        "plan": {"status": plan["status"], "entry": plan["entry"], "stop": plan["stop"],
-                 "targets": {t["name"]: t["price"] for t in plan["targets"]}, "rr": plan["rr"]},
+        # With no active setup there are no entry numbers to quote: giving the model scenario levels invites it to
+        # present them as advice.
+        "plan": ({"entry": plan["entry"], "stop": plan["stop"],
+                  "targets": {t["name"]: t["price"] for t in plan["targets"]}, "rr": plan["rr"],
+                  "since_candle_t": state["since_t"] if state else None}
+                 if sig["action"] != "WAIT" else None),
     }
 
     return {
-        "symbol": symbol, "timeframe": timeframe, "bars": n, "price": round(price, prec),
+        "symbol": symbol, "timeframe": timeframe, "bars": n, "price": round(live_price, prec),
+        "closed_price": round(price, prec), "forming_candle": forming,
         "as_of": int(c.t[-1]), "precision": prec,
         "indicators": indicators_snapshot,
         "series": {
@@ -157,6 +188,13 @@ def analyse(c: Candles, symbol: str, timeframe: str, tf_seconds: int,
             "vwap": ind.clean(vwap, prec),
             "bb_upper": ind.clean(bb_u, prec), "bb_lower": ind.clean(bb_l, prec),
             "rsi": ind.clean(rsi14, 2),
+            "st_up": ind.clean(st_up, prec), "st_dn": ind.clean(st_dn, prec),
+        },
+        "supertrend": {
+            "period": 10, "multiplier": 3.0,
+            "direction": "up" if st_dir == 1 else "down" if st_dir == -1 else "unknown",
+            "signals": [{"t": _t(c, int(i)), "type": "buy" if st_buy[i] else "sell",
+                         "price": round(float(st_up[i] if st_buy[i] else st_dn[i]), prec)} for i in flips[-12:]],
         },
         "structure": {"trend": st.trend, "swings": swings, "events": events,
                       "last_bos": events and next((e for e in reversed(events) if e["type"] == "BOS"), None) or None,

@@ -39,7 +39,7 @@ export default function AIInsightCard({ analysis, onExplain, onWhy }: {
         <span className={cx("rounded-lg border px-2.5 py-1 text-xs font-bold tracking-wide", v.tone)}>{v.label}</span>
       </div>
 
-      <p className="mt-3 text-[15px] font-medium leading-snug text-ink">{wait ? "Not ready yet. " : ""}{sig.summary}</p>
+      <p className="mt-3 text-[15px] font-medium leading-snug text-ink">{wait ? "No entry yet. " : ""}{sig.summary}</p>
 
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between text-xs">
@@ -60,7 +60,8 @@ export default function AIInsightCard({ analysis, onExplain, onWhy }: {
       </div>
 
       <p className="mt-3 rounded-lg bg-bg/50 px-3 py-2 text-xs leading-snug text-mute">
-        <span className="font-semibold text-ink">Invalidation: </span>{sig.invalidation}
+        <span className="font-semibold text-ink">{wait ? "Status: " : "Invalidation: "}</span>{wait ? "no entry level exists yet." : sig.invalidation}
+        {sig.state && !wait && <span className="mt-1 block text-faint">Triggered {sig.state.age_bars} candle{sig.state.age_bars === 1 ? "" : "s"} ago. Levels are fixed until stopped, completed or expired.</span>}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -75,8 +76,15 @@ export default function AIInsightCard({ analysis, onExplain, onWhy }: {
       {details && (
         <div className="mt-4 space-y-3 border-t border-line pt-4">
           <EvidencePanel evidence={sig.evidence} onWhy={(r) => { setHighlight(r); onWhy(r); }} />
-          <TradePlanCard plan={analysis.plan} precision={analysis.precision} compact />
-          <RiskCard plan={analysis.plan} currency={analysis.instrument.currency_symbol} />
+          {wait ? (
+            <p className="rounded-xl border border-dashed border-warn/40 bg-warn/5 p-3 text-xs leading-relaxed text-mute">
+              <span className="font-semibold text-warn">Wait for a correct entry.</span> Entry, stop and targets are shown only once every required
+              condition is met on a closed candle, and then they stay fixed until the setup is stopped, completed or expires.
+            </p>
+          ) : (<>
+            <TradePlanCard plan={analysis.plan} precision={analysis.precision} compact />
+            <RiskCard plan={analysis.plan} currency={analysis.instrument.currency_symbol} />
+          </>)}
         </div>
       )}
     </section>

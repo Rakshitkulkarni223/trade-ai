@@ -8,8 +8,12 @@
    same data. Nothing in the product requires an LLM.
 4. **WAIT is a first-class result.** A setup needs every *required* condition. Missing ones are listed, not hidden.
    Chasing is blocked (entry extended from the confirming level) and so is an invalidation that is too far from price.
-5. **No probabilities.** Evidence is bucketed as supporting / against / caution / missing.
-6. **No data, no analysis.** If candles are unavailable the API returns an error and the copilot says so. Stale or
+5. **No flip-flopping.** Signals use closed candles only (a forming candle can change with every tick). Every setup needs
+   the Supertrend to agree, so the opposite side cannot appear until it turns. A triggered setup is remembered
+   (`analysis/signal_memory.py`) and keeps its levels until stopped, completed, expired or the Supertrend turns.
+6. **No levels without a setup.** While the status is WAIT the chart, the AI context and every answer omit entry/stop/targets.
+7. **No probabilities.** Evidence is bucketed as supporting / against / caution / missing.
+8. **No data, no analysis.** If candles are unavailable the API returns an error and the copilot says so. Stale or
    closed-market data is flagged on every response (`data_status`).
-7. **No orders.** There is no broker, order or account code anywhere. "Paper analysis" only replays saved plans against
+9. **No orders.** There is no broker, order or account code anywhere. "Paper analysis" only replays saved plans against
    later candles.

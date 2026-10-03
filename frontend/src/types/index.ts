@@ -35,6 +35,7 @@ export interface Signal {
   setup_type: string; summary: string; items: EvidenceItem[];
   evidence: { for: EvidenceItem[]; against: EvidenceItem[]; caution: EvidenceItem[]; missing: EvidenceItem[] };
   waiting_for: { label: string; done: boolean }[]; invalidation: string;
+  state: { since_t: number; age_bars: number; held: boolean; progress: { state: string; best_target: number; open_r: number } } | null;
 }
 export interface Target { name: string; price: number; r: number; note: string | null }
 export interface Plan {
@@ -53,7 +54,10 @@ export interface Analysis {
   symbol: string; timeframe: Timeframe; bars: number; price: number; as_of: number; precision: number;
   indicators: Indicators;
   series: { t: number[]; ema20: (number | null)[]; ema50: (number | null)[]; vwap: (number | null)[];
-            bb_upper: (number | null)[]; bb_lower: (number | null)[]; rsi: (number | null)[] };
+            bb_upper: (number | null)[]; bb_lower: (number | null)[]; rsi: (number | null)[];
+            st_up: (number | null)[]; st_dn: (number | null)[] };
+  supertrend: { period: number; multiplier: number; direction: "up" | "down" | "unknown"; signals: { t: number; type: "buy" | "sell"; price: number }[] };
+  closed_price: number; forming_candle: boolean;
   structure: { trend: string; swings: Swing[]; events: StructureEvent[]; last_bos: StructureEvent | null; last_choch: StructureEvent | null };
   liquidity: { levels: LiquidityLevel[]; nearest_buy_side: LiquidityLevel | null; nearest_sell_side: LiquidityLevel | null; recent_sweep: LiquidityLevel | null };
   fvg: Fvg[]; signal: Signal; plan: Plan;
@@ -67,7 +71,7 @@ export interface AnalyzeResponse {
 }
 export interface AnalysisCard {
   action: Signal["action"]; bias: string; setup_type: string; summary: string; evidence: Signal["evidence"];
-  waiting_for: Signal["waiting_for"]; invalidation: string; plan: Plan; indicators: Indicators; symbol: string; timeframe: Timeframe;
+  waiting_for: Signal["waiting_for"]; invalidation: string; plan: Plan; state?: Signal["state"]; indicators: Indicators; symbol: string; timeframe: Timeframe;
 }
 
 export interface CompareRow {

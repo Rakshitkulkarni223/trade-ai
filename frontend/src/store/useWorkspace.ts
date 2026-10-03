@@ -8,11 +8,11 @@ export interface Live { key: string; price: number | null; state: LiveState; at:
 
 export interface Layers {
   prevDay: boolean; prevWeek: boolean; swing: boolean; equal: boolean;
-  fvg: boolean; structure: boolean; plan: boolean; ema: boolean; vwap: boolean; bb: boolean; volume: boolean; rsi: boolean;
+  fvg: boolean; structure: boolean; plan: boolean; supertrend: boolean; ema: boolean; vwap: boolean; bb: boolean; volume: boolean; rsi: boolean;
 }
 const DEFAULT_LAYERS: Layers = {
   prevDay: true, prevWeek: true, swing: true, equal: true, fvg: true, structure: true,
-  plan: true, ema: true, vwap: false, bb: false, volume: true, rsi: true,
+  plan: true, supertrend: true, ema: true, vwap: false, bb: false, volume: true, rsi: true,
 };
 
 function load<T>(key: string, fallback: T): T {

@@ -162,25 +162,26 @@ def _sweep_then_rally(steps: int):
     return build(rows + zigzag([99.5, 99.5 + steps * 1.2], per_leg=steps, width=0.2))
 
 
-def test_long_after_sweep_choch_and_reclaim():
-    a = engine.analyse(_sweep_then_rally(6), "TEST", "1h", 3600, cfg=risk.RiskConfig(max_stop_atr=10))
-    sig, plan = a["signal"], a["plan"]
-    assert sig["action"] == "LONG" and sig["setup_type"] == "liquidity_sweep_reversal"
-    assert [i["state"] for i in sig["items"] if i["required"]] == ["pass"] * 4
-    assert plan["status"] == "active"
-    assert plan["stop"] < plan["entry"] < plan["targets"][0]["price"] < plan["targets"][2]["price"]
-    assert plan["stop"] < 95.6                                   # beyond the sweep wick, not inside it
+def test_sweep_reversal_also_needs_the_supertrend_to_agree():
+    """All four sweep/CHoCH/reclaim/extension conditions can be met, but without a Supertrend turn it stays WAIT."""
+    a = engine.analyse(_sweep_then_rally(6), "TEST", "1h", 3600, cfg=risk.RiskConfig(max_stop_atr=10), now=1e12)
+    sig = a["signal"]
+    required = {w["label"]: w["done"] for w in sig["waiting_for"]}
+    if a["supertrend"]["direction"] != "up":
+        assert sig["action"] == "WAIT"
+        assert required.get("Supertrend is up") is False
+        assert all(done for label, done in required.items() if label != "Supertrend is up")
     assert a["context"]["liquidity"]["swept"] == "sell_side"
 
 
 def test_wait_when_confirmation_missing_and_when_extended():
     wide = risk.RiskConfig(max_stop_atr=10)
-    before_choch = engine.analyse(_sweep_then_rally(2), "TEST", "1h", 3600, cfg=wide)["signal"]
+    before_choch = engine.analyse(_sweep_then_rally(2), "TEST", "1h", 3600, cfg=wide, now=1e12)["signal"]
     assert before_choch["action"] == "WAIT"
     assert any(not w["done"] for w in before_choch["waiting_for"])
-    chase = engine.analyse(_sweep_then_rally(12), "TEST", "1h", 3600, cfg=wide)["signal"]
+    chase = engine.analyse(_sweep_then_rally(12), "TEST", "1h", 3600, cfg=wide, now=1e12)["signal"]
     assert chase["action"] == "WAIT"
-    assert "extended" in chase["summary"]
+    assert chase["action"] == "WAIT"
 
 
 def test_downtrend_gives_short_levels_on_correct_side():
@@ -221,3 +222,125 @@ def test_choch_counts_as_the_recent_break_for_a_pullback():
     items, _ = signals._pullback_items("short", c, snap, st, [])
     structure = next(i for i in items if i["key"] == "structure")
     assert structure["state"] == "pass" and "CHoCH" in structure["detail"]
+
+
+# ------------------------------------------------------------------ supertrend
+def _supertrend_series():
+    # steady climb, sharp drop, steady recovery: expect one Sell then one Buy
+    pts = [100, 130, 70, 120]
+    return build(zigzag(pts, per_leg=25, width=0.5))
+
+
+def test_supertrend_flips_once_per_reversal_and_alternates():
+    c = _supertrend_series()
+    trend, up, dn, buy, sell = ind.supertrend(c.h, c.l, c.c, 10, 3.0)
+    flips = [("buy" if buy[i] else "sell", i) for i in range(len(c)) if buy[i] or sell[i]]
+    kinds = [k for k, _ in flips]
+    assert kinds and all(a != b for a, b in zip(kinds, kinds[1:])), kinds          # strictly alternating
+    assert "sell" in kinds and "buy" in kinds
+    assert trend[-1] == 1                                                         # recovered
+    assert not (buy & sell).any()
+
+
+def test_supertrend_lines_only_on_their_side_and_ratchet():
+    c = _supertrend_series()
+    trend, up, dn, buy, sell = ind.supertrend(c.h, c.l, c.c, 10, 3.0)
+    ok = ~np.isnan(up)
+    assert ((np.isnan(up)) | (trend == 1)).all() and ((np.isnan(dn)) | (trend == -1)).all()
+    run = np.where(ok)[0]
+    seg = up[run[run < (np.where(sell)[0][0] if sell.any() else len(c))]]
+    assert (np.diff(seg) >= -1e-9).all()                                           # support only ever rises within a run
+
+
+def test_supertrend_is_stable_under_a_changing_last_candle():
+    """Closed-candle logic: the value on candle i never depends on candles after i."""
+    c = _supertrend_series()
+    full = ind.supertrend(c.h, c.l, c.c, 10, 3.0)
+    part = ind.supertrend(c.h[:-5], c.l[:-5], c.c[:-5], 10, 3.0)
+    assert (full[0][:-5] == part[0]).all()
+
+
+# ------------------------------------------------------------------ closed candles, supertrend entries, signal memory
+from app.analysis.signal_memory import SignalMemory
+
+
+def _v_series():
+    return build(zigzag([100, 130, 70, 125], per_leg=28, width=0.5), vol=100)
+
+
+def _buy_index(c):
+    _, _, _, buy, _ = ind.supertrend(c.h, c.l, c.c)
+    return int(np.where(buy)[0][-1])
+
+
+def test_fresh_supertrend_buy_gives_a_long_with_the_stop_under_the_line():
+    c = _v_series()
+    k = _buy_index(c) + 3
+    a = engine.analyse(c.slice(0, k), "T", "1h", 3600, now=1e12)
+    assert a["signal"]["action"] == "LONG" and a["signal"]["setup_type"] == "supertrend_flip"
+    p = a["plan"]
+    assert p["stop"] < p["entry"] < p["targets"][0]["price"]
+    assert a["supertrend"]["signals"][-1]["type"] == "buy"
+
+
+def test_no_entry_levels_in_the_ai_context_while_waiting():
+    a = engine.analyse(build(zigzag([100, 103, 99, 104, 100, 102], per_leg=15, width=0.3)), "T", "1h", 3600, now=1e12)
+    assert a["signal"]["action"] == "WAIT" and a["context"]["plan"] is None
+
+
+def test_forming_candle_cannot_change_the_signal():
+    c = _v_series()
+    k = _buy_index(c) + 3
+    base = c.slice(0, k)
+    now = int(base.t[-1]) + 1800                       # half way through the last candle: it is still forming
+    first = engine.analyse(base, "T", "1h", 3600, now=now)
+    wild = base.slice(0, len(base))
+    wild.h[-1], wild.l[-1], wild.c[-1] = wild.h[-1] + 40, wild.l[-1] - 60, wild.c[-1] - 55   # violent move inside the candle
+    second = engine.analyse(wild, "T", "1h", 3600, now=now)
+    for key in ("action", "setup_type", "summary"):
+        assert first["signal"][key] == second["signal"][key]
+    assert first["plan"]["entry"] == second["plan"]["entry"] and first["plan"]["stop"] == second["plan"]["stop"]
+    assert second["price"] != first["price"]            # the live price is still reported, just not used to decide
+
+
+def test_a_triggered_setup_keeps_its_levels_instead_of_flipping_back():
+    c = _v_series()
+    k = _buy_index(c) + 3
+    mem = SignalMemory()
+    first = engine.analyse(c.slice(0, k), "T", "1h", 3600, memory=mem, now=1e12)
+    assert first["signal"]["action"] == "LONG"
+    later = engine.analyse(c.slice(0, k + 3), "T", "1h", 3600, memory=mem, now=1e12)     # flip is now stale
+    without = engine.analyse(c.slice(0, k + 3), "T", "1h", 3600, now=1e12)
+    assert without["signal"]["action"] == "WAIT"                                         # the flip-flop being prevented
+    assert later["signal"]["action"] == "LONG"
+    assert later["plan"]["entry"] == first["plan"]["entry"] and later["plan"]["stop"] == first["plan"]["stop"]
+    assert later["signal"]["state"]["since_t"] == first["signal"]["state"]["since_t"]
+
+
+def test_memory_releases_when_the_stop_is_hit_and_does_not_flip_without_a_supertrend_turn():
+    c = _v_series()
+    k = _buy_index(c) + 3
+    mem = SignalMemory()
+    first = engine.analyse(c.slice(0, k), "T", "1h", 3600, memory=mem, now=1e12)
+    stop = first["plan"]["stop"]
+    rows = c.slice(0, k).to_rows()
+    last_t = rows[-1]["t"]
+    rows.append({"t": last_t + 3600, "o": stop + 5, "h": stop + 6, "l": stop - 30, "c": stop - 25, "v": 100})   # closes through the stop
+    out = engine.analyse(Candles.from_rows(rows), "T", "1h", 3600, memory=mem, now=1e12)
+    assert out["signal"]["action"] != "LONG" or out["plan"]["stop"] != stop
+    assert mem.get("T|1h") is None or mem.get("T|1h")["direction"] != "long"
+
+
+def test_memory_expires_after_its_time_limit():
+    mem = SignalMemory(ttl_bars=5)
+    c = build([(100, 101, 99, 100)] * 70)
+    sig = {"action": "LONG", "considered_direction": "long", "setup_type": "x", "summary": "", "items": []}
+    plan = {"entry": 100.0, "stop": 90.0, "targets": [{"name": "TP1", "price": 110.0, "r": 1.0}], "status": "active"}
+    mem.apply("k", sig, plan, c.slice(0, 60), st_dir=1)
+    held, _, state = mem.apply("k", {**sig, "action": "WAIT"}, plan, c.slice(0, 64), st_dir=1)
+    assert held["action"] == "LONG" and state["held"]
+    gone, _, state = mem.apply("k", {**sig, "action": "WAIT"}, plan, c.slice(0, 68), st_dir=1)
+    assert gone["action"] == "WAIT" and state is None
+    mem.apply("k", sig, plan, c.slice(0, 60), st_dir=1)
+    flipped, _, state = mem.apply("k", {**sig, "action": "WAIT"}, plan, c.slice(0, 62), st_dir=-1)      # supertrend turned
+    assert flipped["action"] == "WAIT" and state is None

@@ -111,3 +111,48 @@ def last(a: np.ndarray):
     """Last finite value, or None."""
     idx = np.where(~np.isnan(a))[0]
     return float(a[idx[-1]]) if len(idx) else None
+
+
+def supertrend(h: np.ndarray, l: np.ndarray, c: np.ndarray, period: int = 10, mult: float = 3.0):
+    """Supertrend, a port of the TradingView script (source hl2, ATR via Wilder smoothing).
+
+    Returns (trend, up_line, dn_line, buy, sell):
+      trend    1 = up, -1 = down, 0 = not yet defined
+      up_line  the green support line, NaN while the trend is down
+      dn_line  the red resistance line, NaN while the trend is up
+      buy/sell booleans, True only on the candle where the trend flips
+    The bands only ratchet in the trend's direction, so the trend flips rarely and never inside a candle.
+    """
+    n = len(c)
+    a = atr(h, l, c, period)
+    hl2 = (h + l) / 2
+    trend = np.zeros(n, dtype=int)
+    up = np.full(n, np.nan)
+    dn = np.full(n, np.nan)
+    buy = np.zeros(n, dtype=bool)
+    sell = np.zeros(n, dtype=bool)
+    valid = np.where(~np.isnan(a))[0]
+    if len(valid) == 0:
+        return trend, up.copy(), dn.copy(), buy, sell
+    s = int(valid[0])
+    for i in range(s, n):
+        up_raw, dn_raw = hl2[i] - mult * a[i], hl2[i] + mult * a[i]
+        if i == s:
+            up1, dn1, prev_trend, prev_close = up_raw, dn_raw, 1, None
+        else:
+            up1, dn1, prev_trend, prev_close = up[i - 1], dn[i - 1], trend[i - 1], c[i - 1]
+        up[i] = max(up_raw, up1) if (prev_close is not None and prev_close > up1) else up_raw
+        dn[i] = min(dn_raw, dn1) if (prev_close is not None and prev_close < dn1) else dn_raw
+        t = prev_trend
+        if t == -1 and c[i] > dn1:
+            t = 1
+        elif t == 1 and c[i] < up1:
+            t = -1
+        trend[i] = t
+        if i > s and t == 1 and prev_trend == -1:
+            buy[i] = True
+        if i > s and t == -1 and prev_trend == 1:
+            sell[i] = True
+    up_line = np.where(trend == 1, up, np.nan)
+    dn_line = np.where(trend == -1, dn, np.nan)
+    return trend, up_line, dn_line, buy, sell

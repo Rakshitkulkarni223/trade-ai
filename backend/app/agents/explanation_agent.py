@@ -82,7 +82,7 @@ def build_sections(a: dict, inst, f: Fmt, F: dict[str, Finding], status: dict, q
     ev = sig["evidence"]
     tgt_bullets = [f"{t['name']}: {f.price(t['price'])} ({t['r']:g}R)" + (f", {t['note']}" if t["note"] else "")
                    for t in plan["targets"]]
-    pre = "Scenario only, not active. " if scenario else ""
+    pre = ""
 
     return [
         _sec("context", "1. Market context", ctx, ctx_extra),
@@ -94,22 +94,35 @@ def build_sections(a: dict, inst, f: Fmt, F: dict[str, Finding], status: dict, q
         _sec("indicators", "5. Technical indicators", "Calculated by the backend on the loaded candles.", ind.facts),
         _sec("setup", "6. Setup", f"{sig['action']}: {sig['summary']}",
              [("✓ " if w["done"] else "○ ") + w["label"] for w in sig["waiting_for"]]),
-        _sec("entry", "7. Entry", f"{pre}{plan['direction'].upper()} entry {f.price(plan['entry'])} ({plan['assumptions']['entry_basis']}).",
-             [], [{"kind": "plan", "id": "entry"}]),
-        _sec("stop", "8. Invalidation / stop",
-             f"{pre}Stop at {f.price(plan['stop'])}, {f.price(plan['risk_per_unit'])} from entry.",
-             plan["warnings"], [{"kind": "plan", "id": "stop"}]),
-        _sec("targets", "9. Targets", pre + "Targets are multiples of the risk distance, not predictions.",
-             tgt_bullets, [{"kind": "plan", "id": "targets"}]),
-        _sec("risk", "10. Risk / reward",
-             "Reward-to-risk at the targets: " + " / ".join(f"{r:g}R" for r in plan["rr"]) + ".",
-             F["risk"].facts[2:]),
+        *_plan_sections(a, f, tgt_bullets, F),
         _sec("invalidates", "11. What would invalidate the setup?", sig["invalidation"], []),
         _sec("evidence", "12. Evidence summary",
              f"{len(ev['for'])} supporting, {len(ev['against'])} against, {len(ev['caution'])} caution, "
              f"{len(ev['missing'])} missing.",
              [f"✓ {i['label']}" for i in ev["for"]] + [f"⚠ {i['label']}" for i in ev["caution"]] +
              [f"✗ {i['label']}" for i in ev["against"]] + [f"○ {i['label']}" for i in ev["missing"]]),
+    ]
+
+
+def _plan_sections(a: dict, f: Fmt, tgt_bullets: list[str], F: dict) -> list[dict]:
+    plan, sig = a["plan"], a["signal"]
+    if sig["action"] == "WAIT":
+        why = "Wait for a correct entry: " + "; ".join(
+            (w["label"][:1].lower() + w["label"][1:]) for w in sig["waiting_for"] if not w["done"]) + "."
+        none = "No active setup, so none is shown."
+        return [_sec("entry", "7. Entry", why), _sec("stop", "8. Invalidation / stop", none),
+                _sec("targets", "9. Targets", none), _sec("risk", "10. Risk / reward", none)]
+    st = sig.get("state")
+    since = (f" Triggered {st['age_bars']} candle(s) ago; levels are fixed until stopped, completed or expired." if st else "")
+    return [
+        _sec("entry", "7. Entry", f"{plan['direction'].upper()} entry {f.price(plan['entry'])} ({plan['assumptions']['entry_basis']}).{since}",
+             [], [{"kind": "plan", "id": "entry"}]),
+        _sec("stop", "8. Invalidation / stop", f"Stop at {f.price(plan['stop'])}, {f.price(plan['risk_per_unit'])} from entry.",
+             plan["warnings"], [{"kind": "plan", "id": "stop"}]),
+        _sec("targets", "9. Targets", "Targets are multiples of the risk distance, not predictions.", tgt_bullets,
+             [{"kind": "plan", "id": "targets"}]),
+        _sec("risk", "10. Risk / reward", "Reward-to-risk at the targets: " + " / ".join(f"{r:g}R" for r in plan["rr"]) + ".",
+             F["risk"].facts[2:]),
     ]
 
 
@@ -129,12 +142,16 @@ def narrative(a: dict, inst, f: Fmt, F: dict[str, Finding], status: dict) -> str
     ch = st.get("last_choch")
     if ch:
         parts.append(f"The last change of character was {ch['direction']}, closing through {f.price(ch['level'])}.")
+    stn = a["supertrend"]
+    if stn["direction"] != "unknown":
+        last = stn["signals"][-1] if stn["signals"] else None
+        parts.append(f"Supertrend is {stn['direction']}" + (f" (last {'Buy' if last['type'] == 'buy' else 'Sell'} signal on the chart)." if last else "."))
     i = a["indicators"]
     if i["rsi"] is not None:
         parts.append(f"RSI is {i['rsi']:.0f} and price is {'above' if a['price'] > (i['ema50'] or a['price']) else 'below'} the 50 EMA.")
     if sig["action"] == "WAIT":
         miss = [w["label"][:1].lower() + w["label"][1:] for w in sig["waiting_for"] if not w["done"]]
-        parts.append("Status: WAIT. Confirmation is incomplete" + (f" (still needed: {'; '.join(miss)})." if miss else "."))
+        parts.append("Status: WAIT. There is no entry yet" + (f"; still needed: {'; '.join(miss)}." if miss else "."))
     else:
         parts.append(f"Status: potential {sig['action']} setup. It remains a scenario, not a certainty.")
     parts.append(sig["invalidation"])
@@ -171,7 +188,12 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
                 "refs": [{"kind": "fvg", "id": g["id"]} for g in a["fvg"][-4:]]}
 
     if intent in ("entry", "invalidation"):
-        scenario = plan["status"] == "conditional"
+        scenario = sig["action"] == "WAIT"
+        if scenario:
+            missing = "; ".join(w["label"][:1].lower() + w["label"][1:] for w in sig["waiting_for"] if not w["done"])
+            txt = ("There is no correct entry right now, so no entry, stop or targets are shown. Wait for "
+                   f"{missing}. Levels appear only when every required condition is met on a closed candle.")
+            return {"text": txt, "refs": []}
         if intent == "entry":
             if scenario:
                 txt = (f"There is no active entry: the status is WAIT. If the {plan['direction']} idea triggers, the "
@@ -207,7 +229,8 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
             txt += "The checklist is not complete yet, so the sensible reading is: wait and watch rather than act. "
         else:
             txt += "The checklist is complete, so this is a candidate setup. "
-        txt += f"The idea is wrong if price goes beyond {f.price(plan['stop'])}. Nothing here is a guarantee."
+        txt += (f"The idea is wrong if price goes beyond {f.price(plan['stop'])}. " if sig["action"] != "WAIT" else
+                "Until then there is no entry level. ") + "Nothing here is a guarantee."
         return {"text": txt, "refs": []}
 
     if intent == "whatif" and level is not None:
@@ -221,6 +244,16 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
 
 def _what_if(a: dict, f: Fmt, level: float) -> str:
     plan, sig, price = a["plan"], a["signal"], a["price"]
+    if sig["action"] == "WAIT":
+        lines = [f"You asked about {f.price(level)}; price is {f.price(price)}, a move of {f.pct((level - price) / price * 100)}.",
+                 "There is no active setup, so there is no stop level for it to break."]
+        liq = a["liquidity"]["levels"]
+        near = sorted(liq, key=lambda l: abs(l["price"] - level))[:1]
+        if near and abs(near[0]["price"] - level) <= (a["indicators"]["atr"] or 0) * 0.75:
+            lines.append(f"It is close to {near[0]['kind']} at {f.price(near[0]['price'])}, a level where price often reacts.")
+        lines.append("Watch whether it holds or closes through the level; a setup only forms once every required condition is met "
+                     "on a closed candle. This is a rules-based read, not a forecast.")
+        return " ".join(lines)
     stop, long = plan["stop"], plan["direction"] == "long"
     lines = [f"You asked about {f.price(level)}; price is {f.price(price)}, a move of {f.pct((level - price) / price * 100)}."]
     beyond_stop = (level <= stop) if long else (level >= stop)

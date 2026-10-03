@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ..analysis import engine
 from ..analysis.candles import Candles
 from ..analysis.risk import RiskConfig
+from ..analysis.signal_memory import SignalMemory
 from ..config import get_settings
 from ..db import models
 from ..services import llm, universe
@@ -23,6 +24,10 @@ from . import explanation_agent as expl, liquidity_agent, market_agent, risk_age
 from .common import Fmt
 
 log = logging.getLogger("tradeai.orchestrator")
+
+# One process-wide memory of triggered setups: a signal keeps its levels until stopped, completed, expired or
+# the Supertrend turns against it (see analysis/signal_memory.py). Lost on restart, by design.
+MEMORY = SignalMemory()
 
 
 def risk_config(overrides: Optional[dict] = None) -> RiskConfig:
@@ -58,7 +63,7 @@ async def run_analysis(symbol: str, timeframe: str, cfg: Optional[RiskConfig] = 
     candles = Candles.from_rows(raw["candles"])
     try:
         a = engine.analyse(candles, inst.symbol, timeframe, TIMEFRAMES[timeframe], inst.tz_offset,
-                           cfg or risk_config(), inst.lot_size)
+                           cfg or risk_config(), inst.lot_size, memory=MEMORY)
     except engine.InsufficientData as exc:
         raise DataError(str(exc)) from exc
     f = Fmt(inst, a["precision"])

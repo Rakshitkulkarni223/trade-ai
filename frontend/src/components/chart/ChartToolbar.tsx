@@ -29,8 +29,9 @@ export default function ChartToolbar() {
         <span className="label mx-1 ml-3">Overlays</span>
         <Toggle on={layers.fvg} onChange={() => toggleLayer("fvg")} label="FVG" color="#fb923c" />
         <Toggle on={layers.structure} onChange={() => toggleLayer("structure")} label="BOS / CHoCH" color="#a78bfa" />
-        <Toggle on={layers.plan} onChange={() => toggleLayer("plan")} label="Entry / SL / TP" color="#5b7cff" />
+        <Toggle on={layers.plan} onChange={() => toggleLayer("plan")} label="Entry / SL / TP (when active)" color="#5b7cff" />
         <span className="label mx-1 ml-3">Indicators</span>
+        <Toggle on={layers.supertrend} onChange={() => toggleLayer("supertrend")} label="Supertrend" color="#26be82" />
         <Toggle on={layers.ema} onChange={() => toggleLayer("ema")} label="EMA" color="#f5c451" />
         <Toggle on={layers.vwap} onChange={() => toggleLayer("vwap")} label="VWAP" color="#e879f9" />
         <Toggle on={layers.bb} onChange={() => toggleLayer("bb")} label="Bollinger" color="#64748b" />

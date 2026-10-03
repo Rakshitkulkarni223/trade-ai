@@ -109,7 +109,7 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         const span = hi - lo || hi * 0.001;
         // plan levels join the fit only when they're close enough not to flatten the candles
         const a = analysisRef.current;
-        if (a && layersRef.current.plan) {
+        if (a && layersRef.current.plan && a.signal.action !== "WAIT") {
           for (const v of [a.plan.entry, a.plan.stop, ...a.plan.targets.map((t) => t.price)]) {
             if (v > lo - span * 1.5 && v < hi + span * 1.5) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
           }
@@ -159,6 +159,21 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       const x = (time: number): number | null => { const c = ts.timeToCoordinate(t(time)); return c === null ? null : (c as number); };
       const y = (price: number) => s.candle!.priceToCoordinate(price);
 
+      if (L.supertrend) {
+        const tt = a.series.t;
+        const run = (arr: (number | null)[], color: string) => {
+          ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.beginPath();
+          let open = false;
+          for (let i = 0; i < tt.length; i++) {
+            const v = arr[i];
+            const xx = v == null ? null : x(tt[i]), yy = v == null ? null : y(v);
+            if (xx === null || yy === null || xx > plotRight + 40) { open = false; continue; }
+            if (!open) { ctx.moveTo(xx, yy); open = true; } else ctx.lineTo(xx, yy);
+          }
+          ctx.stroke();
+        };
+        run(a.series.st_up, "#26be82"); run(a.series.st_dn, "#f45064");
+      }
       if (L.fvg) for (const g of a.fvg) {
         const y1 = y(g.high), y2 = y(g.low);
         if (y1 === null || y2 === null) continue;
@@ -295,10 +310,12 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
       add(l.price, on ? "#ffffff" : swept ? "rgba(56,189,248,.5)" : C.liq, swept ? `${name} ✓ swept` : name,
         swept ? LineStyle.Dotted : LineStyle.Dashed, on ? 3 : swept ? 1 : 2);
     }
-    if (layers.plan) {
-      const p = analysis.plan, scenario = p.status === "conditional";
-      const style = scenario ? LineStyle.Dashed : LineStyle.Solid;
-      const sfx = scenario ? " (scenario)" : "";
+    // Entry / SL / TP exist only for a confirmed setup. While the status is WAIT there is nothing to draw:
+    // scenario levels on every chart invite trades that are not there.
+    if (layers.plan && analysis.signal.action !== "WAIT") {
+      const p = analysis.plan;
+      const style = LineStyle.Solid;
+      const sfx = "";
       const hl = (id: string) => (highlight?.kind === "plan" && highlight.id === id ? 3 : 1) as 1 | 3;
       add(p.entry, C.primary, `ENTRY${sfx}`, style, hl("entry"));
       add(p.stop, C.down, `SL${sfx}`, style, hl("stop"));
@@ -315,6 +332,15 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         const sell = l.side === "sell_side";
         markers.push({ time: t(l.swept_t), position: sell ? "belowBar" : "aboveBar", shape: "circle", color: C.liq, text: `${sell ? "SSL" : "BSL"} swept` });
       }
+    }
+    if (layers.supertrend) for (const sg of analysis.supertrend.signals) {
+      const buy = sg.type === "buy";
+      markers.push({ time: t(sg.t), position: buy ? "belowBar" : "aboveBar", shape: buy ? "arrowUp" : "arrowDown", color: buy ? C.up : C.down, text: buy ? "Buy" : "Sell" });
+    }
+    const st = analysis.signal.state;
+    if (st && analysis.signal.action !== "WAIT") {
+      const long = analysis.signal.action === "LONG";
+      markers.push({ time: t(st.since_t), position: long ? "belowBar" : "aboveBar", shape: long ? "arrowUp" : "arrowDown", color: long ? C.up : C.down, text: `${analysis.signal.action} setup` });
     }
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     // one marker per candle/position keeps the chart readable
@@ -339,6 +365,21 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         {layers.ema && (<><span className="text-[#f5c451]">EMA 20</span><span className="text-primary">EMA 50</span></>)}
         {layers.vwap && <span className="text-[#e879f9]">VWAP</span>}
       </div>
+      {analysis && (
+        <div className="pointer-events-none absolute left-3 top-8 z-10 max-w-[70%]">
+          {analysis.signal.action === "WAIT" ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-warn/30 bg-bg/80 px-2 py-0.5 text-[11px] text-warn backdrop-blur">
+              <span className="h-1.5 w-1.5 rounded-full bg-warn" />No entry yet · wait for a confirmed setup
+            </span>
+          ) : (
+            <span className={cx("inline-flex items-center gap-1.5 rounded-md border bg-bg/80 px-2 py-0.5 text-[11px] backdrop-blur",
+              analysis.signal.action === "LONG" ? "border-up/40 text-up" : "border-down/40 text-down")}>
+              <span className={cx("h-1.5 w-1.5 rounded-full", analysis.signal.action === "LONG" ? "bg-up" : "bg-down")} />
+              {analysis.signal.action} setup active{analysis.signal.state ? ` · ${analysis.signal.state.age_bars} candle${analysis.signal.state.age_bars === 1 ? "" : "s"} ago · levels fixed` : ""}
+            </span>
+          )}
+        </div>
+      )}
       <button onClick={resetView} title="Reset zoom and pan"
         className="absolute right-[4.5rem] top-1.5 z-10 rounded-md border border-line bg-panel/80 px-2 py-0.5 text-[11px] font-medium text-mute backdrop-blur hover:text-ink">⟲ Reset</button>
       <div ref={mainRef} className="relative h-[46vh] min-h-[320px] w-full md:h-[52vh]">

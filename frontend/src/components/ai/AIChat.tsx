@@ -25,11 +25,12 @@ function MiniCard({ card }: { card: AnalysisCard }) {
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs text-mute">{card.symbol} · {card.timeframe}</span><ActionBadge action={card.action} />
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      {card.action !== "WAIT" && <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         {[["Entry", p.entry, "text-primary"], ["SL", p.stop, "text-down"], ...p.targets.map((t) => [t.name, t.price, "text-up"] as const)].map(([k, v, c]) => (
           <div key={String(k)} className="flex justify-between"><span className="text-mute">{k}{scenario && k === "Entry" ? " (scenario)" : ""}</span><span className={cx("tnum font-medium", String(c))}>{fmtPrice(Number(v), dec)}</span></div>
         ))}
-      </div>
+      </div>}
+      {card.action === "WAIT" && <p className="text-xs font-medium text-warn">No entry yet. Wait for a confirmed setup.</p>}
       {card.waiting_for.length > 0 && card.action === "WAIT" && (
         <ul className="mt-2 space-y-0.5 border-t border-line pt-2 text-xs">
           {card.waiting_for.map((w) => <li key={w.label} className={w.done ? "text-up" : "text-mute"}>{w.done ? "✓" : "○"} {w.label}</li>)}
