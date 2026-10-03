@@ -38,6 +38,10 @@ class Provider(Protocol):
     async def complete(self, system: str, messages: list[dict], max_tokens: int = 700) -> str: ...
 
 
+class Truncated(RuntimeError):
+    """The model stopped because it ran out of tokens; a cut-off answer is never shown."""
+
+
 def _secret(v) -> str:
     return v.get_secret_value() if v else ""
 
@@ -55,7 +59,10 @@ class AnthropicProvider:
                              json={"model": self.model, "max_tokens": max_tokens, "system": system,
                                    "messages": messages})
         r.raise_for_status()
-        return "".join(b.get("text", "") for b in r.json().get("content", []))
+        body = r.json()
+        if body.get("stop_reason") == "max_tokens":
+            raise Truncated("anthropic hit max_tokens")
+        return "".join(b.get("text", "") for b in body.get("content", []))
 
 
 @dataclass
@@ -71,7 +78,10 @@ class OpenAIProvider:
                              json={"model": self.model, "max_tokens": max_tokens,
                                    "messages": [{"role": "system", "content": system}, *messages]})
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"] or ""
+        choice = r.json()["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise Truncated("openai hit the token limit")
+        return choice["message"]["content"] or ""
 
 
 @dataclass
@@ -87,10 +97,14 @@ class GeminiProvider:
             r = await c.post(f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
                              headers={"x-goog-api-key": self.key},
                              json={"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
-                                   "generationConfig": {"maxOutputTokens": max_tokens}})
+                                   # Gemini 3 "thinks" out of the same output budget; keep it low and leave headroom
+                                   "generationConfig": {"maxOutputTokens": max(max_tokens, 1500),
+                                                        "thinkingConfig": {"thinkingLevel": "low"}}})
         r.raise_for_status()
-        parts = r.json()["candidates"][0]["content"]["parts"]
-        return "".join(p.get("text", "") for p in parts)
+        cand = r.json()["candidates"][0]
+        if cand.get("finishReason") not in (None, "STOP"):
+            raise Truncated(f"gemini finished with {cand.get('finishReason')}")
+        return "".join(p.get("text", "") for p in cand["content"]["parts"])
 
 
 def get_provider() -> Optional[Provider]:
