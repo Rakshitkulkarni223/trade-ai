@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[SecretStr] = None
     anthropic_model: str = "claude-sonnet-5-5"
     openai_model: str = "gpt-4o-mini"
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
 
     frontend_url: str = "http://localhost:5173"
 
