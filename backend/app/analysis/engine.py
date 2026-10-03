@@ -25,11 +25,11 @@ class InsufficientData(ValueError):
 
 
 def price_precision(price: float) -> int:
-    if price >= 1000:
+    if price >= 10:
         return 2
     if price >= 1:
         return 4
-    return 8
+    return 6
 
 
 def _t(c: Candles, i: int) -> int:

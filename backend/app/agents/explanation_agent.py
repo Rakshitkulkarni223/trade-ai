@@ -133,7 +133,7 @@ def narrative(a: dict, inst, f: Fmt, F: dict[str, Finding], status: dict) -> str
     if i["rsi"] is not None:
         parts.append(f"RSI is {i['rsi']:.0f} and price is {'above' if a['price'] > (i['ema50'] or a['price']) else 'below'} the 50 EMA.")
     if sig["action"] == "WAIT":
-        miss = [w["label"].lower() for w in sig["waiting_for"] if not w["done"]]
+        miss = [w["label"][:1].lower() + w["label"][1:] for w in sig["waiting_for"] if not w["done"]]
         parts.append("Status: WAIT. Confirmation is incomplete" + (f" (still needed: {'; '.join(miss)})." if miss else "."))
     else:
         parts.append(f"Status: potential {sig['action']} setup. It remains a scenario, not a certainty.")
@@ -176,7 +176,7 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
             if scenario:
                 txt = (f"There is no active entry: the status is WAIT. If the {plan['direction']} idea triggers, the "
                        f"reference entry is {f.price(plan['entry'])} ({plan['assumptions']['entry_basis']}), with invalidation at {f.price(plan['stop'])}. "
-                       "Still needed: " + "; ".join(w["label"].lower() for w in sig["waiting_for"] if not w["done"]) + ".")
+                       "Still needed: " + "; ".join(w["label"][:1].lower() + w["label"][1:] for w in sig["waiting_for"] if not w["done"]) + ".")
             else:
                 txt = (f"Reference entry for the {plan['direction']} setup is {f.price(plan['entry'])} ({plan['assumptions']['entry_basis']}). "
                        f"Invalidation is {f.price(plan['stop'])}. Entries are scenario levels, not guarantees.")

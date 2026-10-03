@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 10 12 17;
+  --panel: 17 20 27;
+  --raised: 24 28 37;
+  --line: 35 40 52;
+  --ink: 230 233 240;
+  --mute: 139 147 167;
+  --faint: 90 98 118;
+  --primary: 91 124 255;
+  --up: 38 190 130;
+  --down: 244 80 100;
+  --warn: 245 165 36;
+  --ai: 139 92 246;
+  --liq: 56 189 248;
+  --fvg: 251 146 60;
+  --struct: 167 139 250;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+  font-feature-settings: "cv11", "ss01";
+  overscroll-behavior: none;
+}
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--line)) transparent; }
+::selection { background: rgb(var(--ai) / 0.4); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+@layer components {
+  .card { @apply rounded-2xl border border-line bg-panel; }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-1.5 text-xs font-medium
+           text-mute transition hover:border-ai/50 hover:text-ink active:scale-[.98] disabled:opacity-50;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition
+           active:scale-[.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn bg-primary text-white hover:brightness-110; }
+  .btn-ai { @apply btn bg-ai text-white hover:brightness-110; }
+  .btn-ghost { @apply btn border border-line bg-raised text-ink hover:border-faint; }
+  .label { @apply text-[11px] font-medium uppercase tracking-wider text-faint; }
+  .input {
+    @apply w-full rounded-xl border border-line bg-raised px-3.5 py-2.5 text-sm text-ink placeholder:text-faint
+           outline-none transition focus:border-ai/60 focus:ring-2 focus:ring-ai/20;
+  }
+}
+
+@keyframes pulse-dot { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+.dot-live { animation: pulse-dot 1.6s ease-in-out infinite; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+.rise { animation: rise .25s ease-out both; }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }

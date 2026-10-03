@@ -1,0 +1,74 @@
+# TradeAI — AI Market Copilot
+
+An AI-first chart workspace. Open a market, see liquidity, market structure, fair value gaps and indicators on an
+interactive chart, and ask a copilot that explains the setup from the **actual numbers** — including when the right
+answer is **WAIT**.
+
+> Analysis only. There is no broker, no order placement, no account access. Information, not financial advice.
+
+## Run it
+
+Needs Python 3.10+ (3.11 used in development) and Node 18+.
+
+```bash
+./scripts/dev.sh          # backend on :8000 (docs at /docs), app on :5173
+```
+
+or by hand:
+
+```bash
+cd backend && python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload --port 8000
+cd frontend && npm install && npm run dev
+```
+
+No keys are required. Market data: **Binance** (crypto) and **Yahoo Finance** (Indian/US stocks, indices, metals).
+Optionally copy `.env.example` to `.env` and add an `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY`
+for LLM-written explanations. Without one, a deterministic rules-based explainer is used.
+
+## What's in it
+
+| Area | What it does |
+| --- | --- |
+| Chart | Candles, volume, EMA/VWAP/Bollinger, RSI pane, 1m–1W, liquidity lines, FVG boxes, BOS/CHoCH, Entry/SL/TP. Built on TradingView's open-source `lightweight-charts`. |
+| Liquidity | Previous day/week high & low, swing highs/lows, equal highs/lows, sweep detection (wick through, close back). |
+| Structure | Swings, HH/HL/LH/LL, BOS, CHoCH, trend. No look-ahead: swings are only used once confirmed. |
+| FVG | Bullish/bearish gaps with unmitigated / partial / filled status. |
+| Signal | LONG / SHORT / **WAIT** from required conditions. Evidence is *supporting / against / caution / missing*, never a win-probability. |
+| Plan | Entry, invalidation, TP1–3 as R-multiples, sizing from your account size and risk %. All assumptions are returned. |
+| Copilot | Quick actions + chat. Understands "what if it breaks 78,000?", "compare with ETH", "why WAIT?", "what changed?". **Why?** highlights the object on the chart. |
+| AI Lab / Screener | Scans a market; every hit lists the checks behind it. Plain-English queries become structured rules you can see. |
+| Watchlist | Price, change, trend, liquidity and AI status. |
+| Paper analysis | Save an active plan, then see what later candles did to it (stop wins ties; no fees/slippage). |
+
+Sector and market-cap screening are not offered: the free providers don't supply fundamentals.
+
+## Architecture
+
+```
+React (Vite, TS, Tailwind, TanStack Query, Zustand)  →  /api proxy  →  FastAPI
+FastAPI:  routers → services (market data, cache, LLM, scanner) → analysis (pure numpy) → agents (orchestrator)
+Storage:  SQLite by default (DATABASE_URL for Postgres) · memory cache by default (REDIS_URL for Redis)
+```
+
+Agents (`backend/app/agents/`): `market_agent` (data) → `technical`, `liquidity`, `structure`, `risk` → `explanation_agent`,
+coordinated by `orchestrator`. A plain orchestrator, no framework. See [docs/ai-guardrails.md](docs/ai-guardrails.md).
+
+API highlights: `GET /api/market/{symbol}/history`, `GET /api/analysis/{symbol}?timeframe=1H`, `POST /api/ai/analyze|chat|scan|explain`,
+`POST /api/screener/query`, `/api/watchlist`, `/api/paper/setups`. Interactive docs at `/docs`.
+
+## Tests
+
+```bash
+cd backend && .venv/bin/pytest -q      # offline: synthetic candles with known sweeps, CHoCH, FVGs, risk math
+cd frontend && npm run build           # typecheck + production build
+```
+
+## Known limits
+
+- Updates are polled (10 s – 5 min depending on timeframe), not streamed.
+- Yahoo limits intraday history (1m ≈ 5 days, 5–30m ≈ 1 month, 1H ≈ 6 months) and is unofficial; it can change without notice.
+- Detector parameters (swing size, FVG minimum size, sweep window, 2.5 ATR "extended" rule, 4 ATR stop limit) are sensible defaults,
+  not tuned or backtested. Treat output as a structured read of the chart.
+- Single local user, no login. Postgres and Redis paths exist but were not exercised here.
+- Groww/broker integration and real trading were deliberately removed from scope.

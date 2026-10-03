@@ -31,6 +31,11 @@ class Snapshot:
     vwap: Optional[float]
 
 
+def _lc(label: str) -> str:
+    """Lower-case only the first letter so acronyms such as BOS and CHoCH survive inside a sentence."""
+    return label[:1].lower() + label[1:]
+
+
 def _item(key: str, label: str, state: str, detail: str, ref: Optional[dict] = None,
           required: bool = False) -> dict:
     return {"key": key, "label": label, "state": state, "detail": detail,
@@ -109,14 +114,14 @@ def _pullback_items(direction: str, c: Candles, snap: Snapshot, st: Structure,
     long = direction == "long"
 
     trend_ok = st.trend == w["bias"]
-    bos = st.last_event("BOS", w["bias"])
-    fresh = bos is not None and n - 1 - bos.index <= BOS_RECENT_BARS
+    brk = st.last_event(None, w["bias"])          # a BOS or a CHoCH in this direction both count as a break
+    fresh = brk is not None and n - 1 - brk.index <= BOS_RECENT_BARS
     ok = trend_ok and fresh
-    items.append(_item("structure", f"{w['bias'].capitalize()} trend with a recent BOS",
+    items.append(_item("structure", f"{w['bias'].capitalize()} trend with a recent structure break",
                        "pass" if ok else "pending",
-                       (f"Structure is {st.trend}; last {w['bias']} BOS was {n - 1 - bos.index} candle(s) ago."
-                        if bos else f"Structure is {st.trend}; no {w['bias']} BOS found."),
-                       {"kind": "structure", "id": f"BOS-{bos.index}"} if bos else None, True))
+                       (f"Structure is {st.trend}; last {w['bias']} {brk.type} was {n - 1 - brk.index} candle(s) ago."
+                        if brk else f"Structure is {st.trend}; no {w['bias']} structure break found."),
+                       {"kind": "structure", "id": f"{brk.type}-{brk.index}"} if brk else None, True))
 
     atr = snap.atr or 0.0
     zone_ref, zone_txt, near = None, "No pullback zone nearby.", False
@@ -234,7 +239,7 @@ def decide(c: Candles, snap: Snapshot, st: Structure, lm: LiquidityMap, fvgs: li
 
     if action == "WAIT":
         summary = ("Confirmation is incomplete. Waiting for: " +
-                   "; ".join(i["label"].lower() for i in pending) + ".") if pending else \
+                   "; ".join(_lc(i["label"]) for i in pending) + ".") if pending else \
             "Momentum is working against the idea, so it is on hold."
         if chosen["blocked"]:
             summary += " Momentum currently argues against it."
@@ -267,4 +272,4 @@ def gate_wide_stop(sig: dict, risk_atr: float, max_atr: float) -> None:
     sig["waiting_for"].append({"label": item["label"], "done": False})
     sig["action"] = "WAIT"
     sig["summary"] = ("Confirmation is incomplete. Waiting for: " +
-                      "; ".join(w["label"].lower() for w in sig["waiting_for"] if not w["done"]) + ".")
+                      "; ".join(_lc(w["label"]) for w in sig["waiting_for"] if not w["done"]) + ".")

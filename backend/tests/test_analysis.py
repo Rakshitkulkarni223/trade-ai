@@ -210,3 +210,14 @@ def test_wide_structural_stop_downgrades_to_wait():
     assert sig["action"] == "WAIT"
     assert any(not w["done"] and "close enough" in w["label"] for w in sig["waiting_for"])
     assert sig["evidence"]["missing"][0]["key"] == "stop_distance"
+
+
+def test_choch_counts_as_the_recent_break_for_a_pullback():
+    """A bearish CHoCH is itself a bearish structure break; a pullback short must not insist on a separate BOS."""
+    from app.analysis.market_structure import Structure, StructureEvent
+    c = build([(100, 101, 99, 100)] * 60)
+    st = Structure(trend="bearish", events=[StructureEvent("CHoCH", "bearish", 55, 99.0, 40)])
+    snap = signals.Snapshot(price=100, ema20=100.2, ema50=102, rsi=45, atr=1.0, volume_ratio=1.0, vwap=100)
+    items, _ = signals._pullback_items("short", c, snap, st, [])
+    structure = next(i for i in items if i["key"] == "structure")
+    assert structure["state"] == "pass" and "CHoCH" in structure["detail"]
