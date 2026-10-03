@@ -365,7 +365,8 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         {layers.ema && (<><span className="text-[#f5c451]">EMA 20</span><span className="text-primary">EMA 50</span></>)}
         {layers.vwap && <span className="text-[#e879f9]">VWAP</span>}
       </div>
-      {analysis && (
+      {/* belongs to the Entry / SL / TP layer: switch the layer off and the status note goes with it */}
+      {analysis && layers.plan && (
         <div className="pointer-events-none absolute left-3 top-8 z-10 max-w-[70%]">
           {analysis.signal.action === "WAIT" ? (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-warn/30 bg-bg/80 px-2 py-0.5 text-[11px] text-warn backdrop-blur">
