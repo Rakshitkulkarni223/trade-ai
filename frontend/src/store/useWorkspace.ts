@@ -10,9 +10,10 @@ export interface Layers {
   prevDay: boolean; prevWeek: boolean; swing: boolean; equal: boolean;
   fvg: boolean; structure: boolean; plan: boolean; supertrend: boolean; ema: boolean; vwap: boolean; bb: boolean; volume: boolean; rsi: boolean;
 }
+// A calm starting point; everything else is one tap away in the Indicators picker.
 const DEFAULT_LAYERS: Layers = {
-  prevDay: true, prevWeek: true, swing: true, equal: true, fvg: true, structure: true,
-  plan: true, supertrend: true, ema: true, vwap: false, bb: false, volume: true, rsi: true,
+  prevDay: true, prevWeek: false, swing: false, equal: false, fvg: true, structure: true,
+  plan: true, supertrend: true, ema: false, vwap: false, bb: false, volume: true, rsi: true,
 };
 
 function load<T>(key: string, fallback: T): T {
@@ -26,7 +27,7 @@ interface State {
   messages: ChatMessage[]; busy: boolean; live: Live; setLive: (l: Partial<Live>) => void;
   setMessages: (fn: (m: ChatMessage[]) => ChatMessage[]) => void; setBusy: (b: boolean) => void;
   setSymbol: (s: string) => void; setTimeframe: (t: Timeframe) => void;
-  toggleLayer: (k: keyof Layers) => void; setHighlight: (r: ChartRef | null) => void;
+  toggleLayer: (k: keyof Layers) => void; setAllLayers: (on: boolean) => void; resetLayers: () => void; setHighlight: (r: ChartRef | null) => void;
   setAiOpen: (o: boolean) => void; setConversationId: (id: number | null) => void;
   setRisk: (accountSize: number, riskPct: number) => void;
 }
@@ -41,6 +42,8 @@ export const useWorkspace = create<State>((set, get) => ({
   setMessages: (fn) => set({ messages: fn(get().messages) }), setBusy: (busy) => set({ busy }),
   setSymbol: (symbol) => { set({ symbol, conversationId: null, highlight: null, messages: [] }); persist(get()); },
   setTimeframe: (timeframe) => { set({ timeframe, highlight: null }); persist(get()); },
+  setAllLayers: (on) => { const layers = Object.fromEntries(Object.keys(get().layers).map((k) => [k, on])) as unknown as Layers; set({ layers }); save("tradeai.layers", layers); },
+  resetLayers: () => { set({ layers: { ...DEFAULT_LAYERS } }); save("tradeai.layers", DEFAULT_LAYERS); },
   toggleLayer: (k) => { const layers = { ...get().layers, [k]: !get().layers[k] }; set({ layers }); save("tradeai.layers", layers); },
   setHighlight: (highlight) => set({ highlight }),
   setAiOpen: (aiOpen) => set({ aiOpen }),
