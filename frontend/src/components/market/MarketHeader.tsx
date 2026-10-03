@@ -21,6 +21,12 @@ export default function MarketHeader({ analysis, symbol }: { analysis?: Analysis
           <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{inst?.name ?? symbol}</h1>
           <span className="rounded-md bg-raised px-1.5 py-0.5 text-[11px] text-mute">{symbol}</span>
           {inst && <span className="hidden text-[11px] text-faint sm:inline">{inst.category}</span>}
+          {inst && (
+            <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-mute"
+              title="Prices differ slightly between exchanges and between USD and USDT pairs, so this can differ from other sites by a few dollars.">
+              {inst.provider === "binance" ? `Price: Binance ${symbol}` : "Price: Yahoo Finance"}
+            </span>
+          )}
         </div>
         <div className="mt-1 flex items-baseline gap-3">
           <span className="tnum text-3xl font-semibold tracking-tight">{price === undefined ? "—" : `${inst?.currency_symbol ?? ""}${fmtPrice(price, p)}`}</span>
