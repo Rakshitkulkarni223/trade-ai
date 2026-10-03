@@ -52,3 +52,11 @@ def test_no_order_code_anywhere():
     src = "\n".join(p.read_text() for p in pathlib.Path("app").rglob("*.py"))
     for word in ("place_order", "cancel_order", "BrokerInterface", "groww", "ENABLE_REAL_TRADING"):
         assert word.lower() not in src.lower(), word
+
+
+def test_stream_rejects_unknown_timeframe():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as c, c.websocket_connect("/ws/market/BTCUSDT?timeframe=9x") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "status" and msg["state"] == "error"

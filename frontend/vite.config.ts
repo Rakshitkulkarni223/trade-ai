@@ -8,7 +8,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       // The browser only ever talks to this origin; the API (and every secret) stays behind it.
-      proxy: { "/api": { target: env.VITE_PROXY_TARGET || "http://127.0.0.1:8000", changeOrigin: true } },
+      proxy: {
+        "/api": { target: env.VITE_PROXY_TARGET || "http://127.0.0.1:8000", changeOrigin: true },
+        "/ws": { target: env.VITE_PROXY_TARGET || "http://127.0.0.1:8000", changeOrigin: true, ws: true },
+      },
     },
   };
 });

@@ -3,6 +3,7 @@ import {
   type IChartApi, type IPriceLine, type ISeriesApi, type LogicalRange, type SeriesMarker, type Time, type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLiveFeed, liveKey } from "../../hooks/useLiveFeed";
 import { useWorkspace } from "../../store/useWorkspace";
 import type { Analysis, Candle, ChartRef, LiquidityLevel } from "../../types";
 import { cx, fmtPrice } from "../../lib/format";
@@ -35,11 +36,14 @@ function pickLevels(levels: LiquidityLevel[], price: number, precision: number, 
   return [...byPrice.values()];
 }
 
-interface Props { candles: Candle[]; analysis?: Analysis; precision: number; loading?: boolean }
+/** `dataKey` says which symbol|timeframe `candles` belong to, so a live update can never be drawn on another market's history. */
+interface Props { candles: Candle[]; analysis?: Analysis; precision: number; loading?: boolean; dataKey?: string }
+
+const TF_SECONDS: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1H": 3600, "4H": 14400, "1D": 86400, "1W": 604800 };
 
 const t = (n: number) => n as UTCTimestamp;
 
-export default function ChartWorkspace({ candles, analysis, precision, loading }: Props) {
+export default function ChartWorkspace({ candles, analysis, precision, loading, dataKey }: Props) {
   const { layers, highlight, symbol, timeframe } = useWorkspace();
   const mainRef = useRef<HTMLDivElement>(null);
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,9 @@ export default function ChartWorkspace({ candles, analysis, precision, loading }
   const highlightRef = useRef<ChartRef | null>(highlight);
   const drawRef = useRef<() => void>(() => {});
   const lastKey = useRef("");
+  const liveRef = useRef<Candle | null>(null);
+  const candlesRef = useRef<Candle[]>(candles);
+  candlesRef.current = candles;
   const [hover, setHover] = useState<Candle | null>(null);
 
   analysisRef.current = analysis;
@@ -158,6 +165,28 @@ export default function ChartWorkspace({ candles, analysis, precision, loading }
     return () => { cancelAnimationFrame(raf); chart.remove(); rsiChart.remove(); chartRef.current = null; rsiChartRef.current = null; seriesRef.current = {}; };
   }, []);
 
+  // ---- live updates: touch only the forming candle; the periodic refresh rebuilds everything else
+  const drawLive = (c: Candle) => {
+    const s = seriesRef.current;
+    if (!s.candle) return;
+    s.candle.update({ time: t(c.t), open: c.o, high: c.h, low: c.l, close: c.c });
+    s.vol?.update({ time: t(c.t), value: c.v, color: c.c >= c.o ? "rgba(38,190,130,.35)" : "rgba(244,80,100,.35)" });
+  };
+  const matches = dataKey === liveKey(symbol, timeframe);
+  useLiveFeed(symbol, timeframe, {
+    onCandle: (c) => {
+      const last = candlesRef.current[candlesRef.current.length - 1];
+      if (!matches || !last || c.t < last.t) return;       // never rewrite history, never mix markets
+      liveRef.current = c; drawLive(c);
+    },
+    onTick: (price) => {
+      const base = liveRef.current ?? candlesRef.current[candlesRef.current.length - 1];
+      if (!matches || !base || Date.now() / 1000 >= base.t + (TF_SECONDS[timeframe] ?? 3600)) return;   // new bar: wait for the refresh
+      const next = { ...base, h: Math.max(base.h, price), l: Math.min(base.l, price), c: price };
+      liveRef.current = next; drawLive(next);
+    },
+  });
+
   // ---- candles, volume and indicator lines
   useEffect(() => {
     const s = seriesRef.current, chart = chartRef.current;
@@ -182,12 +211,16 @@ export default function ChartWorkspace({ candles, analysis, precision, loading }
     s.rsi!.setData(candles.map((c) => (rsi.has(c.t) ? { time: t(c.t), value: rsi.get(c.t)! } : { time: t(c.t) })));
 
     const key = `${symbol}|${timeframe}`;
+    const lastC = candles[candles.length - 1];
+    if (liveRef.current && liveRef.current.t >= lastC.t && dataKey === liveKey(symbol, timeframe)) drawLive(liveRef.current);
+    else liveRef.current = null;
     if (lastKey.current !== key) {
       lastKey.current = key;
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length - 130), to: candles.length + 8 });
     }
     drawRef.current();
-  }, [candles, analysis, precision, symbol, timeframe]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candles, analysis, precision, symbol, timeframe, dataKey]);
 
   // ---- indicator visibility
   useEffect(() => {

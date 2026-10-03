@@ -9,6 +9,7 @@ import StructurePanel from "../components/chart/StructurePanel";
 import { DataStatusBanner, ErrorState } from "../components/common/ui";
 import MarketHeader from "../components/market/MarketHeader";
 import { useAnalysisData, useHistory } from "../hooks/useMarketData";
+import { liveKey } from "../hooks/useLiveFeed";
 import { precisionFor } from "../lib/format";
 import { useWorkspace } from "../store/useWorkspace";
 
@@ -33,7 +34,8 @@ export default function StockDetails() {
         {history.error && !history.data ? (
           <ErrorState error={history.error} onRetry={() => history.refetch()} />
         ) : (
-          <ChartWorkspace candles={candles} analysis={a} precision={precision} loading={history.isPending} />
+          <ChartWorkspace candles={candles} analysis={a} precision={precision} loading={history.isPending}
+            dataKey={history.data ? liveKey(history.data.instrument.symbol, history.data.timeframe) : undefined} />
         )}
         {analysis.error && !a && history.data && (
           <div className="rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">

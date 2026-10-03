@@ -8,7 +8,7 @@ export const searchSymbols = (q: string) => get<{ results: Instrument[] }>(`/api
 export const fetchPulse = () => get<{ quotes: Quote[] }>("/api/market/pulse");
 export const fetchQuotes = (symbols: string[]) => post<{ quotes: Quote[] }>("/api/market/quotes", { symbols });
 export const fetchHistory = (symbol: string, timeframe: Timeframe, limit = 500) =>
-  get<{ instrument: Instrument; candles: Candle[]; data_status: DataStatus }>(
+  get<{ instrument: Instrument; timeframe: Timeframe; candles: Candle[]; data_status: DataStatus }>(
     `/api/market/${encodeURIComponent(symbol)}/history?timeframe=${timeframe}&limit=${limit}`);
 export const fetchDepth = (symbol: string) =>
   get<{ bids: [number, number][]; asks: [number, number][] }>(`/api/market/${encodeURIComponent(symbol)}/depth`);

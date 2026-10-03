@@ -3,6 +3,9 @@ import type { ChartRef, ChatMessage, Timeframe } from "../types";
 
 /** One shared context: the Trading Workspace and the AI Workspace both read symbol + timeframe from here,
  *  so "Analyze this chart" always means the chart the user is looking at. */
+export type LiveState = "connecting" | "live" | "polling" | "offline";
+export interface Live { key: string; price: number | null; state: LiveState; at: number }
+
 export interface Layers {
   prevDay: boolean; prevWeek: boolean; swing: boolean; equal: boolean;
   fvg: boolean; structure: boolean; plan: boolean; ema: boolean; vwap: boolean; bb: boolean; volume: boolean; rsi: boolean;
@@ -20,7 +23,7 @@ function save(key: string, v: unknown) { try { localStorage.setItem(key, JSON.st
 interface State {
   symbol: string; timeframe: Timeframe; layers: Layers; highlight: ChartRef | null;
   aiOpen: boolean; conversationId: number | null; accountSize: number; riskPct: number;
-  messages: ChatMessage[]; busy: boolean;
+  messages: ChatMessage[]; busy: boolean; live: Live; setLive: (l: Partial<Live>) => void;
   setMessages: (fn: (m: ChatMessage[]) => ChatMessage[]) => void; setBusy: (b: boolean) => void;
   setSymbol: (s: string) => void; setTimeframe: (t: Timeframe) => void;
   toggleLayer: (k: keyof Layers) => void; setHighlight: (r: ChartRef | null) => void;
@@ -34,6 +37,7 @@ export const useWorkspace = create<State>((set, get) => ({
   symbol: saved.symbol, timeframe: saved.timeframe, layers: load("tradeai.layers", DEFAULT_LAYERS),
   highlight: null, aiOpen: false, conversationId: null, accountSize: saved.accountSize, riskPct: saved.riskPct,
   messages: [], busy: false,
+  live: { key: "", price: null, state: "connecting", at: 0 }, setLive: (l) => set({ live: { ...get().live, ...l } }),
   setMessages: (fn) => set({ messages: fn(get().messages) }), setBusy: (busy) => set({ busy }),
   setSymbol: (symbol) => { set({ symbol, conversationId: null, highlight: null, messages: [] }); persist(get()); },
   setTimeframe: (timeframe) => { set({ timeframe, highlight: null }); persist(get()); },

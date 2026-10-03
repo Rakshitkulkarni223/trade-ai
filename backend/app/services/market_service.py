@@ -9,7 +9,7 @@ from . import providers, universe
 from .cache import get_cache
 from .providers import DataError, TIMEFRAMES
 
-CANDLE_TTL = {"1m": 10, "5m": 20, "15m": 30, "30m": 45, "1H": 60, "4H": 120, "1D": 180, "1W": 600}
+CANDLE_TTL = {"1m": 5, "5m": 8, "15m": 10, "30m": 15, "1H": 15, "4H": 30, "1D": 60, "1W": 300}
 QUOTE_TTL = 10
 DEFAULT_LIMIT = 500
 

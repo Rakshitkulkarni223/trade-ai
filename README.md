@@ -30,7 +30,7 @@ for LLM-written explanations. Without one, a deterministic rules-based explainer
 
 | Area | What it does |
 | --- | --- |
-| Chart | Candles, volume, EMA/VWAP/Bollinger, RSI pane, 1m–1W, liquidity lines, FVG boxes, BOS/CHoCH, Entry/SL/TP. Built on TradingView's open-source `lightweight-charts`. |
+| Chart | Live candle (streamed for crypto), volume, EMA/VWAP/Bollinger, RSI pane, 1m–1W, liquidity lines, FVG boxes, BOS/CHoCH, Entry/SL/TP. Built on TradingView's open-source `lightweight-charts`. |
 | Liquidity | Previous day/week high & low, swing highs/lows, equal highs/lows, sweep detection (wick through, close back). |
 | Structure | Swings, HH/HL/LH/LL, BOS, CHoCH, trend. No look-ahead: swings are only used once confirmed. |
 | FVG | Bullish/bearish gaps with unmitigated / partial / filled status. |
@@ -66,7 +66,9 @@ cd frontend && npm run build           # typecheck + production build
 
 ## Known limits
 
-- Updates are polled (10 s – 5 min depending on timeframe), not streamed.
+- Live feed: crypto streams from Binance through the backend (`/ws/market/{symbol}`), updating the forming candle about every 2 s.
+  Stocks, indices and metals have no free stream, so their price is polled every 5 s (the header shows `LIVE · 5s`), and Yahoo may delay
+  some exchanges. Indicators, liquidity and the AI insight recompute on a 8 s – 2 min refresh, not per tick.
 - Yahoo limits intraday history (1m ≈ 5 days, 5–30m ≈ 1 month, 1H ≈ 6 months) and is unofficial; it can change without notice.
 - Detector parameters (swing size, FVG minimum size, sweep window, 2.5 ATR "extended" rule, 4 ATR stop limit) are sensible defaults,
   not tuned or backtested. Treat output as a structured read of the chart.

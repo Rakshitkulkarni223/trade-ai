@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from .analysis.engine import InsufficientData
 from .config import get_settings
 from .db.database import SessionLocal, init_db
-from .routers import ai, analysis, market, paper, screener, watchlist
+from .routers import ai, analysis, market, paper, screener, stream, watchlist
 from .services import cache, llm, providers
 from .services.providers import DataError
 
@@ -44,7 +44,7 @@ async def thin(_: Request, exc: InsufficientData) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc), "code": "insufficient_data"})
 
 
-for r in (market.router, analysis.router, ai.router, screener.router, watchlist.router, paper.router):
+for r in (market.router, analysis.router, ai.router, screener.router, watchlist.router, paper.router, stream.router):
     app.include_router(r)
 
 
