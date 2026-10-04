@@ -1,5 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { addWatch } from "../../api/ai";
+import { useWatchToggle } from "../../hooks/useWatchlist";
 import { liveKey } from "../../hooks/useLiveFeed";
 import { useWorkspace } from "../../store/useWorkspace";
 import type { Analysis } from "../../types";
@@ -7,8 +6,7 @@ import { cx, fmtPct, fmtPrice, tone } from "../../lib/format";
 import { ActionBadge } from "../common/ui";
 
 export default function MarketHeader({ analysis, symbol }: { analysis?: Analysis; symbol: string }) {
-  const qc = useQueryClient();
-  const add = useMutation({ mutationFn: () => addWatch(symbol), onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }) });
+  const watch = useWatchToggle(symbol);
   const { live, timeframe } = useWorkspace();
   const q = analysis?.quote, inst = analysis?.instrument;
   const isLive = live.key === liveKey(symbol, timeframe);
@@ -34,11 +32,16 @@ export default function MarketHeader({ analysis, symbol }: { analysis?: Analysis
           <LivePill state={analysis?.data_status?.market_open === false ? "closed" : isLive ? live.state : "connecting"} opensAt={analysis?.data_status?.opens_at} />
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col items-end gap-1">
+       <div className="flex items-center gap-2">
         {analysis && <ActionBadge action={analysis.signal.action} className="!px-3 !py-1 !text-xs" />}
-        <button className="btn-ghost !py-1.5" onClick={() => add.mutate()} disabled={add.isPending || add.isSuccess}>
-          {add.isSuccess ? "★ In watchlist" : "☆ Watch"}
+        <button onClick={watch.toggle} disabled={!watch.ready || watch.pending} aria-pressed={watch.watching}
+          title={watch.watching ? "In your watchlist. Click to remove." : "Add to your watchlist"}
+          className={cx("btn-ghost !py-1.5", watch.watching && "!border-warn/50 !bg-warn/10 !text-warn")}>
+          <span aria-hidden>{watch.watching ? "★" : "☆"}</span>{watch.pending ? "Saving…" : watch.watching ? "Watching" : "Watch"}
         </button>
+       </div>
+       {watch.error && <p role="alert" className="max-w-[260px] text-right text-[11px] leading-snug text-down">{watch.error}</p>}
       </div>
     </div>
   );

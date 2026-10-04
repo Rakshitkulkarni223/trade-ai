@@ -21,6 +21,13 @@ class WatchlistItem(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class AppFlag(Base):
+    """One-off facts about this installation, e.g. that the default watchlist was already offered."""
+    __tablename__ = "app_flags"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), default="1")
+
+
 class Conversation(Base):
     __tablename__ = "ai_conversations"
     id: Mapped[int] = mapped_column(primary_key=True)

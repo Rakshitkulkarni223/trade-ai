@@ -17,7 +17,9 @@ export const screenRules = (market: string, timeframe: Timeframe, rules: Record<
   post<ScanResponse>("/api/screener", { market, timeframe, rules });
 
 export const fetchWatchlist = (timeframe: Timeframe) => get<{ items: WatchRow[] }>(`/api/watchlist?timeframe=${timeframe}`);
-export const addWatch = (symbol: string) => post<{ symbol: string }>("/api/watchlist", { symbol });
+export interface AddWatchResult { symbol: string; name: string; added: boolean; resolved_from: string | null }
+export const addWatch = (symbol: string) => post<AddWatchResult>("/api/watchlist", { symbol });
+export const fetchWatchSymbols = () => get<{ symbols: string[] }>("/api/watchlist/symbols");
 export const removeWatch = (symbol: string) => del<{ removed: string }>(`/api/watchlist/${encodeURIComponent(symbol)}`);
 
 export const fetchSetups = () =>

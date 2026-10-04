@@ -89,6 +89,7 @@ export interface ChatResponse { conversation_id: number; reply: string; payload:
 export interface WatchRow {
   symbol: string; name: string; category: string; currency_symbol: string; price?: number; change_pct?: number;
   trend?: string | null; liquidity?: string | null; status?: Signal["action"] | null; summary?: string; error?: string;
+  market_open?: boolean | null;
 }
 
 export interface ScanCheck { rule: string; label: string; ok: boolean; detail: string }
