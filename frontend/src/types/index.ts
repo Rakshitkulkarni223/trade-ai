@@ -34,7 +34,8 @@ export interface Signal {
   action: "LONG" | "SHORT" | "WAIT"; bias: string; considered_direction: "long" | "short";
   setup_type: string; summary: string; items: EvidenceItem[];
   evidence: { for: EvidenceItem[]; against: EvidenceItem[]; caution: EvidenceItem[]; missing: EvidenceItem[] };
-  waiting_for: { label: string; done: boolean }[]; invalidation: string;
+  waiting_for: { label: string; done: boolean; hint?: string | null }[]; invalidation: string;
+  headline: string; market_read: string[];
   state: { since_t: number; age_bars: number; held: boolean; progress: { state: string; best_target: number; open_r: number } } | null;
 }
 export interface Target { name: string; price: number; r: number; note: string | null }
@@ -71,7 +72,7 @@ export interface AnalyzeResponse {
 }
 export interface AnalysisCard {
   action: Signal["action"]; bias: string; setup_type: string; summary: string; evidence: Signal["evidence"];
-  waiting_for: Signal["waiting_for"]; invalidation: string; plan: Plan; state?: Signal["state"]; indicators: Indicators; symbol: string; timeframe: Timeframe;
+  waiting_for: Signal["waiting_for"]; invalidation: string; headline?: string; plan: Plan; state?: Signal["state"]; indicators: Indicators; symbol: string; timeframe: Timeframe;
 }
 
 export interface CompareRow {

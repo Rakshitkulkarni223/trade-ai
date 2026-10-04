@@ -107,6 +107,10 @@ def analyse(c_all: Candles, symbol: str, timeframe: str, tf_seconds: int,
         plan["sizing"] = position_size(cfg.equity, cfg.max_risk_per_trade_pct, plan["entry"], plan["stop"],
                                        cfg.max_position_pct, lot_size)
     sig["state"] = state
+    sig["market_read"] = _market_read(st.trend, st_dir, snap, price)
+    if sig.get("held") and state:
+        sig["headline"] = (f"{sig['action']} setup still active, triggered {state['age_bars']} candle(s) ago. "
+                           "Its levels stay fixed until stopped, completed or expired.")
     if sig["action"] == "WAIT":
         sig["invalidation"] = ("No setup is active, so there is nothing to invalidate yet. "
                                "Levels appear once every required condition is met on a closed candle.")
@@ -165,7 +169,8 @@ def analyse(c_all: Candles, symbol: str, timeframe: str, tf_seconds: int,
         },
         "fvg": [{"type": g["type"], "low": g["low"], "high": g["high"], "status": g["status"]} for g in fvg_out[-4:]],
         "indicators": indicators_snapshot,
-        "signal": {"action": sig["action"], "setup_type": sig["setup_type"],
+        "signal": {"action": sig["action"], "setup_type": sig["setup_type"], "headline": sig["headline"],
+                   "market_read": sig["market_read"],
                    "direction_considered": direction, "summary": sig["summary"],
                    "waiting_for": sig["waiting_for"], "invalidation": sig["invalidation"]},
         "evidence": {k: [i["label"] + ": " + i["detail"] for i in v] for k, v in sig["evidence"].items()},
@@ -208,6 +213,24 @@ def analyse(c_all: Candles, symbol: str, timeframe: str, tf_seconds: int,
         "plan": plan,
         "context": context,
     }
+
+
+def _market_read(trend: str, st_dir: int, snap, price: float) -> list[str]:
+    """Three or four plain facts, always shown with the verdict. Deterministic, so reading it costs nothing."""
+    read = []
+    stn = {1: "up", -1: "down"}.get(st_dir)
+    since = f" for {snap.st_flip_ago} candles" if snap.st_flip_ago is not None and stn else ""
+    read.append(f"Structure is {trend}" + (f"; Supertrend is {stn}{since}." if stn else "."))
+    if snap.rsi is not None:
+        note = (" (stretched: moves like this often pause or pull back)" if snap.rsi >= 70
+                else " (oversold: selling is stretched)" if snap.rsi <= 30 else "")
+        read.append(f"RSI is {snap.rsi:.0f}{note}.")
+    if snap.atr and snap.ema20:
+        d = (price - snap.ema20) / snap.atr
+        read.append(f"Price is {abs(d):.1f} ATR {'above' if d > 0 else 'below'} its 20 EMA.")
+    if snap.volume_ratio is not None:
+        read.append(f"Volume is {snap.volume_ratio:.2f}x its 20-candle average.")
+    return read
 
 
 def levels_by_id(levels: list[dict], id_: str) -> Optional[dict]:

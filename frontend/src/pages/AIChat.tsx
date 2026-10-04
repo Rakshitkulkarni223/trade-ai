@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import AIChat from "../components/ai/AIChat";
 import AIInsightCard from "../components/ai/AIInsightCard";
@@ -13,6 +14,7 @@ export default function AIWorkspace() {
   const { symbol, timeframe, setTimeframe, accountSize, riskPct, setHighlight } = useWorkspace();
   const { data, error, isPending, refetch } = useAnalysisData(symbol, timeframe, accountSize, riskPct);
   const { send, why } = useAI();
+  const [insightOpen, setInsightOpen] = useState(true);
 
   return (
     <div className="mx-auto grid h-full max-w-6xl gap-5 p-4 md:p-6 lg:grid-cols-[380px_minmax(0,1fr)]">
@@ -28,7 +30,7 @@ export default function AIWorkspace() {
         {error && !data && <ErrorState error={error} onRetry={() => refetch()} />}
         {data && (<>
           <DataStatusBanner status={data.data_status} />
-          <AIInsightCard analysis={data} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
+          <AIInsightCard analysis={data} open={insightOpen} onOpenChange={setInsightOpen} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
         </>)}
       </div>
       <div className="card flex min-h-[70vh] flex-col p-4 lg:h-[calc(100vh-7rem)]">

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { aiStatus } from "../../api/ai";
 import { useAI } from "../../hooks/useAI";
 import { useAnalysisData } from "../../hooks/useMarketData";
@@ -12,7 +13,15 @@ export default function AICopilot({ onClose }: { onClose?: () => void }) {
   const { symbol, timeframe, accountSize, riskPct, setHighlight } = useWorkspace();
   const { data, error, isPending, refetch } = useAnalysisData(symbol, timeframe, accountSize, riskPct);
   const status = useQuery({ queryKey: ["ai-status"], queryFn: aiStatus, staleTime: 60_000 });
-  const { send, why } = useAI();
+  const { send, why, messages } = useAI();
+  // Expanded while the panel is empty; collapses to a slim pinned verdict when the first question is asked.
+  const [insightOpen, setInsightOpen] = useState(true);
+  const prevCount = useRef(messages.length);
+  useEffect(() => {
+    if (prevCount.current === 0 && messages.length > 0) setInsightOpen(false);
+    if (messages.length === 0) setInsightOpen(true);
+    prevCount.current = messages.length;
+  }, [messages.length]);
 
   const header = (
     <>
@@ -20,7 +29,7 @@ export default function AICopilot({ onClose }: { onClose?: () => void }) {
       {error && !data && <ErrorState error={error} onRetry={() => refetch()} />}
       {data && (<>
         <DataStatusBanner status={data.data_status} />
-        <AIInsightCard analysis={data} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
+        <AIInsightCard analysis={data} open={insightOpen} onOpenChange={setInsightOpen} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
       </>)}
     </>
   );
@@ -34,7 +43,7 @@ export default function AICopilot({ onClose }: { onClose?: () => void }) {
         </div>
         {onClose && <button onClick={onClose} className="btn-ghost !px-2.5 !py-1.5" aria-label="Close copilot">✕</button>}
       </div>
-      <AIChat className="min-h-0 flex-1" header={header} />
+      <AIChat className="min-h-0 flex-1" header={header} pinHeader={messages.length > 0 && !insightOpen} />
     </div>
   );
 }

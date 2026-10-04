@@ -235,6 +235,56 @@ def _common_items(direction: str, snap: Snapshot, fvgs: list[FVG]) -> list[dict]
     return items
 
 
+def _hint_for(item: dict, direction: str, setup: str, c: Candles, snap: Snapshot, st: Structure,
+              lm: LiquidityMap, fvgs: list[FVG]) -> Optional[str]:
+    """What would satisfy a missing condition, in plain words and with the level to watch.
+    These are levels to watch, not entries: no stop or targets are implied."""
+    k, long, w = item["key"], direction == "long", _dir_words(direction)
+    atr = snap.atr or 0.0
+    above, below = ("above", "below") if long else ("below", "above")
+    if k == "extension":
+        if setup == "trend_pullback" and snap.ema20 and atr:
+            limit_px = snap.ema20 + (MAX_EXTENSION_ATR * atr if long else -MAX_EXTENSION_ATR * atr)
+            dist = abs(snap.price - snap.ema20) / atr
+            return (f"Price needs to ease back to about {_p(limit_px)} or {'lower' if long else 'higher'} "
+                    f"(within {MAX_EXTENSION_ATR:g} ATR of the 20 EMA at {_p(snap.ema20)}). It is {dist:.1f} ATR away now.")
+        return "Wait for price to retest the level that confirmed the setup instead of chasing the move."
+    if k == "supertrend":
+        want = 1 if long else -1
+        if setup == "supertrend_flip" and snap.st_dir == want and snap.st_flip_ago is not None:
+            return (f"The last Supertrend flip is {snap.st_flip_ago} candles old; entries are only taken within "
+                    f"{SUPERTREND_FRESH_BARS} candles of a flip. Wait for the next one.")
+        if snap.st_line is not None and snap.st_dir != want:
+            return (f"Needs a candle to close {above} the Supertrend line at {_p(snap.st_line)}, which turns it "
+                    f"{'up (a Buy)' if long else 'down (a Sell)'}.")
+        return None
+    if k == "whipsaw":
+        return (f"The trend before this flip held only {snap.st_prev_run} candles. Wait for a trend that holds "
+                f"{WHIPSAW_BARS}+ candles.") if snap.st_prev_run is not None else None
+    if k == "structure":
+        swings = [x for x in st.swings if x.kind == ("high" if long else "low")]
+        if swings:
+            lvl = swings[-1].price
+            return f"A close {above} the latest swing {'high' if long else 'low'} ({_p(lvl)}) would confirm a {w['bias']} structure break."
+        return None
+    if k == "pullback":
+        bits = []
+        if snap.ema20:
+            bits.append(f"the 20 EMA ({_p(snap.ema20)})")
+        gap = next((g for g in reversed(fvgs) if g.type == w["bias"] and g.status != "filled"), None)
+        if gap:
+            bits.append(f"the open {gap.type} FVG {_p(gap.low)}–{_p(gap.high)}")
+        return ("Price needs to reach " + " or ".join(bits) + ".") if bits else None
+    if k == "ema_trend" and snap.ema50 is not None:
+        return f"Needs a close {above} the 50 EMA ({_p(snap.ema50)})."
+    if k == "sweep":
+        near = lm.nearest(w["side"])
+        return (f"Needs a wick through {near.kind} at {_p(near.price)} that closes back inside.") if near else None
+    if k == "reclaim":
+        return "Comes after a sweep: price must close back inside the swept level."
+    return None
+
+
 def _bucket(items: list[dict]) -> dict:
     return {
         "for": [i for i in items if i["state"] == "pass"],
@@ -254,6 +304,9 @@ def _evaluate_candidate(setup: str, direction: str, c, snap, st, lm, fvgs):
         core, anchor = _pullback_items(direction, c, snap, st, fvgs)
         core.append(_supertrend_agree(direction, snap))
     items = core + _common_items(direction, snap, fvgs)
+    for it in items:
+        if it["required"] and it["state"] != "pass":
+            it["hint"] = _hint_for(it, direction, setup, c, snap, st, lm, fvgs)
     required = [i for i in items if i["required"]]
     passed = sum(1 for i in required if i["state"] == "pass")
     # momentum flatly against the idea blocks it even if structure lines up
@@ -279,7 +332,7 @@ def decide(c: Candles, snap: Snapshot, st: Structure, lm: LiquidityMap, fvgs: li
 
     direction = chosen["direction"]
     items = chosen["items"]
-    waiting = [{"label": i["label"], "done": i["state"] == "pass"} for i in items if i["required"]]
+    waiting = [{"label": i["label"], "done": i["state"] == "pass", "hint": i.get("hint")} for i in items if i["required"]]
     pending = [i for i in items if i["required"] and i["state"] != "pass"]
 
     if action == "WAIT":
@@ -292,7 +345,17 @@ def decide(c: Candles, snap: Snapshot, st: Structure, lm: LiquidityMap, fvgs: li
         word = "bullish" if direction == "long" else "bearish"
         summary = f"Potential {word} setup ({chosen['setup'].replace('_', ' ')}): all required conditions are present."
 
+    names = {"supertrend_flip": "Supertrend " + ("Buy" if direction == "long" else "Sell") + " signal",
+             "liquidity_sweep_reversal": "Liquidity-sweep reversal", "trend_pullback": "Trend pullback"}
+    if action != "WAIT":
+        headline = f"{names[chosen['setup']]} confirmed on a closed candle: every required condition is met."
+    elif pending:
+        p0 = pending[0]
+        headline = p0.get("hint") or p0["detail"]
+    else:
+        headline = "Momentum is working against the idea, so it is on hold."
     return {
+        "headline": headline,
         "action": action,
         "bias": st.trend,
         "considered_direction": direction,
@@ -314,7 +377,10 @@ def gate_wide_stop(sig: dict, risk_atr: float, max_atr: float) -> None:
     sig["items"].append(item)
     sig["evidence"] = _bucket(sig["items"])
     sig["evidence_counts"] = {k: len(v) for k, v in sig["evidence"].items()}
-    sig["waiting_for"].append({"label": item["label"], "done": False})
+    item["hint"] = (f"The structural stop would be {risk_atr:.1f} ATR away (limit {max_atr:g}). Wait for price to move closer "
+                    "to it or for tighter structure to form.")
+    sig["waiting_for"].append({"label": item["label"], "done": False, "hint": item["hint"]})
+    sig["headline"] = item["hint"]
     sig["action"] = "WAIT"
     sig["summary"] = ("Confirmation is incomplete. Waiting for: " +
                       "; ".join(_lc(w["label"]) for w in sig["waiting_for"] if not w["done"]) + ".")

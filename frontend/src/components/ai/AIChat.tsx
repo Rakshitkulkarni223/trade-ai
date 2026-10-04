@@ -84,7 +84,7 @@ function Bubble({ m, onShow }: { m: ChatMessage; onShow: (ref: NonNullable<ChatM
 }
 
 /** One scrolling thread (optional `header` first, e.g. the insight card), with the input pinned underneath. */
-export default function AIChat({ className, header, showActions = true }: { className?: string; header?: ReactNode; showActions?: boolean }) {
+export default function AIChat({ className, header, pinHeader = false, showActions = true }: { className?: string; header?: ReactNode; pinHeader?: boolean; showActions?: boolean }) {
   const { symbol, timeframe, setHighlight } = useWorkspace();
   const { messages, busy, send, reset } = useAI();
   const [text, setText] = useState("");
@@ -104,18 +104,20 @@ export default function AIChat({ className, header, showActions = true }: { clas
 
   return (
     <div className={cx("flex min-h-0 flex-col", className)}>
+      {/* a collapsed header stays pinned while the conversation scrolls under it; an expanded one scrolls with the thread */}
+      {header && pinHeader && <div className="shrink-0 space-y-3 pb-3 pr-1">{header}</div>}
       <div ref={scroller} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {header}
+        {header && !pinHeader && header}
         {messages.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line p-4">
-            <p className="text-sm font-medium text-ink">Ask about {symbol} <span className="text-faint">· {timeframe}</span></p>
-            <p className="mt-1 text-xs leading-relaxed text-mute">Pick a question, or type your own, like “what if it breaks 83,000?”.</p>
-            {showActions && <div className="mt-3"><AIQuickActions wrap disabled={busy} onPick={(id) => send("", id)} /></div>}
+          <div className="pt-1">
+            <p className="text-xs font-semibold text-ink">Ask about {symbol} <span className="font-normal text-faint">· {timeframe}</span></p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-faint">Pick a question or type your own, like “what if it breaks 83,000?”.</p>
+            {showActions && <div className="mt-2.5"><AIQuickActions wrap disabled={busy} onPick={(id) => send("", id)} /></div>}
           </div>
         ) : messages.map((m, i) => <Bubble key={i} m={m} onShow={(refs) => refs && refs[0] && setHighlight(refs[0])} />)}
       </div>
 
-      <div className="mt-3 space-y-2 border-t border-line pt-3">
+      <div className="mt-2 space-y-2 border-t border-line pt-3">
         {showActions && messages.length > 0 && <AIQuickActions disabled={busy} onPick={(id) => send("", id)} />}
         <div className="flex items-end gap-2">
           <textarea rows={1} className="input max-h-28 min-h-[44px] resize-none" placeholder={`Ask anything about ${symbol}…`} value={text}

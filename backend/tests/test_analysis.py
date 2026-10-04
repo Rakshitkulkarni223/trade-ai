@@ -344,3 +344,29 @@ def test_memory_expires_after_its_time_limit():
     mem.apply("k", sig, plan, c.slice(0, 60), st_dir=1)
     flipped, _, state = mem.apply("k", {**sig, "action": "WAIT"}, plan, c.slice(0, 62), st_dir=-1)      # supertrend turned
     assert flipped["action"] == "WAIT" and state is None
+
+
+# ------------------------------------------------------------------ hints and headline
+def test_every_missing_condition_says_what_would_satisfy_it():
+    a = engine.analyse(_sweep_then_rally(2), "T", "1h", 3600, cfg=risk.RiskConfig(max_stop_atr=10), now=1e12)
+    sig = a["signal"]
+    assert sig["action"] == "WAIT" and sig["headline"]
+    pending = [w for w in sig["waiting_for"] if not w["done"]]
+    assert pending and any(w.get("hint") for w in pending)
+    assert all(w["hint"] for w in pending if w["label"].startswith(("Supertrend", "Price above", "Price below", "Bullish")))
+    assert sig["market_read"] and sig["market_read"][0].startswith("Structure is")
+
+
+def test_headline_for_an_active_setup_names_the_setup_and_has_no_hint_noise():
+    c = _v_series()
+    a = engine.analyse(c.slice(0, _buy_index(c) + 3), "T", "1h", 3600, now=1e12)
+    assert a["signal"]["action"] == "LONG" and "Supertrend Buy signal confirmed" in a["signal"]["headline"]
+    assert all(w["done"] for w in a["signal"]["waiting_for"])
+
+
+def test_extension_hint_names_a_price_to_come_back_to():
+    from app.analysis.signals import Snapshot, _hint_for
+    snap = Snapshot(price=110, ema20=100, ema50=95, rsi=70, atr=2.0, volume_ratio=1.0, vwap=100)
+    item = {"key": "extension", "required": True, "state": "pending"}
+    h = _hint_for(item, "long", "trend_pullback", None, snap, None, None, [])
+    assert "about 105" in h and "5.0 ATR away" in h            # 100 + 2.5*2 = 105; price is (110-100)/2 = 5 ATR out

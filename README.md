@@ -37,7 +37,7 @@ for LLM-written explanations. Without one, a deterministic rules-based explainer
 | Signal | LONG / SHORT / **WAIT** from required conditions, decided on **closed candles only** and always with the **Supertrend (ATR 10 × 3)** agreeing. Evidence is *supporting / against / caution / missing*, never a win-probability. |
 | Setups | Supertrend Buy/Sell flip (not a whipsaw), liquidity-sweep reversal, trend pullback. A triggered setup keeps **fixed** entry/stop/targets until stopped, completed, expired (30 candles) or the Supertrend turns against it. While WAIT, **no entry levels are shown anywhere**. |
 | Plan | Entry, invalidation, TP1–3 as R-multiples, sizing from your account size and risk %. All assumptions are returned. |
-| Copilot | Quick actions + chat. Understands "what if it breaks 78,000?", "compare with ETH", "why WAIT?", "what changed?". **Why?** highlights the object on the chart. |
+| Copilot | A pinned verdict (headline, progress, market read) where **every missing condition says what would satisfy it and at which level**, plus quick actions + chat. Understands "what if it breaks 78,000?", "compare with ETH", "why WAIT?", "what changed?". **Why?** highlights the object on the chart. |
 | AI Lab / Screener | Scans a market; every hit lists the checks behind it. Plain-English queries become structured rules you can see. |
 | Watchlist | Price, change, trend, liquidity and AI status. |
 | Paper analysis | Save an active plan, then see what later candles did to it (stop wins ties; no fees/slippage). |

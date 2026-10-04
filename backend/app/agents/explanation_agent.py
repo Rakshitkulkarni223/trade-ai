@@ -190,9 +190,10 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
     if intent in ("entry", "invalidation"):
         scenario = sig["action"] == "WAIT"
         if scenario:
-            missing = "; ".join(w["label"][:1].lower() + w["label"][1:] for w in sig["waiting_for"] if not w["done"])
-            txt = ("There is no correct entry right now, so no entry, stop or targets are shown. Wait for "
-                   f"{missing}. Levels appear only when every required condition is met on a closed candle.")
+            pend = [w for w in sig["waiting_for"] if not w["done"]]
+            lines = [f"○ {w['label']}" + (f": {w['hint']}" if w.get("hint") else "") for w in pend]
+            txt = ("There is no correct entry right now, so no entry, stop or targets are shown. What it is waiting for:\n"
+                   + "\n".join(lines) + "\nLevels appear only when every required condition is met on a closed candle.")
             return {"text": txt, "refs": []}
         if intent == "entry":
             if scenario:
@@ -208,13 +209,16 @@ def answer(intent: str, a: dict, inst, f: Fmt, F: dict[str, Finding], status: di
         return {"text": txt, "refs": [{"kind": "plan", "id": "stop"}, {"kind": "plan", "id": "entry"}]}
 
     if intent == "why_wait":
+        total = len(sig["waiting_for"])
+        done = sum(1 for w in sig["waiting_for"] if w["done"])
         if sig["action"] == "WAIT":
-            lines = [("✓ " if w["done"] else "○ ") + w["label"] for w in sig["waiting_for"]]
-            txt = (f"Status is WAIT because {sig['summary'].lower()}\n" + "\n".join(lines) +
-                   f"\n{sig['invalidation']}")
+            lines = [("✓ " if w["done"] else "○ ") + w["label"] + (f": {w['hint']}" if (not w["done"] and w.get("hint")) else "")
+                     for w in sig["waiting_for"]]
+            txt = (f"Status is WAIT: {done} of {total} required conditions are met. A setup is only taken when all of them are, "
+                   "checked on a closed candle.\n" + "\n".join(lines))
         else:
             cautions = [i["label"] + ": " + i["detail"] for i in sig["evidence"]["caution"]]
-            txt = (f"The status is {sig['action']}, not WAIT: every required condition is present. Remaining cautions:\n" +
+            txt = (f"The status is {sig['action']}, not WAIT: all {total} required conditions are present. Remaining cautions:\n" +
                    ("\n".join("⚠ " + c for c in cautions) if cautions else "none flagged") + f"\n{sig['invalidation']}")
         return {"text": txt, "refs": []}
 
