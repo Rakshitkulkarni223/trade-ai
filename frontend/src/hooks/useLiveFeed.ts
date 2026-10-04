@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../store/useWorkspace";
 import type { Candle, Timeframe } from "../types";
@@ -12,6 +13,7 @@ export function useLiveFeed(symbol: string, tf: Timeframe, handlers: Handlers) {
   const h = useRef(handlers);
   h.current = handlers;
   const setLive = useWorkspace((s) => s.setLive);
+  const qc = useQueryClient();
 
   useEffect(() => {
     const key = liveKey(symbol, tf);
@@ -20,6 +22,7 @@ export function useLiveFeed(symbol: string, tf: Timeframe, handlers: Handlers) {
     let attempt = 0;
     let closed = false;
     let pending: number | null = null;
+    let wasClosed = false;
     let flush: ReturnType<typeof setInterval> | undefined;
 
     setLive({ key, price: null, state: "connecting", at: 0 });
@@ -36,10 +39,17 @@ export function useLiveFeed(symbol: string, tf: Timeframe, handlers: Handlers) {
         if (closed) return;          // a replaced connection (old timeframe/symbol) must never touch the new chart
         let m: { type: string; mode?: string; candle?: Candle; closed?: boolean; price?: number; state?: string };
         try { m = JSON.parse(ev.data); } catch { return; }
-        if (m.type === "hello") { attempt = 0; setLive({ key, state: m.mode === "stream" ? "live" : "polling" }); }
+        if (m.type === "hello") {
+          attempt = 0; setLive({ key, state: m.mode === "stream" ? "live" : "polling" });
+          if (wasClosed) { wasClosed = false; qc.invalidateQueries({ queryKey: ["history"] }); qc.invalidateQueries({ queryKey: ["analysis"] }); }   // the market just opened: catch up
+        }
+        else if (m.type === "status" && m.state === "closed") { wasClosed = true; setLive({ key, state: "closed" }); }
         else if (m.type === "kline" && m.candle) { pending = m.candle.c; h.current.onCandle(m.candle, !!m.closed); }
         else if (m.type === "tick" && typeof m.price === "number") { pending = m.price; h.current.onTick(m.price); }
-        else if (m.type === "status" && m.state === "error") setLive({ key, state: "offline" });
+        else if (m.type === "status" && m.state === "error") {
+          setLive({ key, state: "offline" });
+          if ((m as { fatal?: boolean }).fatal) closed = true;     // an unknown symbol will not start working: stop retrying
+        }
       };
       ws.onclose = () => {
         if (closed) return;
@@ -51,5 +61,5 @@ export function useLiveFeed(symbol: string, tf: Timeframe, handlers: Handlers) {
     connect();
 
     return () => { closed = true; clearTimeout(timer); clearInterval(flush); ws?.close(); };
-  }, [symbol, tf, setLive]);
+  }, [symbol, tf, setLive, qc]);
 }

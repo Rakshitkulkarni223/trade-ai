@@ -14,6 +14,7 @@ from typing import Awaitable, Callable, Optional
 import websockets
 
 from . import providers
+from .market_service import closed_ttl, market_status
 from .providers import BINANCE_INTERVAL, DataError
 from .universe import Instrument
 
@@ -48,11 +49,32 @@ async def relay_binance(inst: Instrument, timeframe: str, send: Send) -> None:
 
 
 async def poll_yahoo(inst: Instrument, send: Send, seconds: int = YAHOO_POLL_SECONDS) -> None:
-    await send({"type": "hello", "mode": "poll", "source": "yahoo", "interval_s": seconds})
+    """Poll the price while the market is open. While it is closed there is nothing to fetch, so do nothing: tell the
+    client once, then sleep until the open (or re-check every few minutes if the open time is unknown)."""
+    announced = None                          # "open" | "closed": what the client has been told
+    failures = 0
     while True:
+        status = await market_status(inst)
+        if status.get("known") and not status["open"]:
+            if announced != "closed":
+                await send({"type": "status", "state": "closed", "opens_at": status.get("opens_at")})
+                announced = "closed"
+            await asyncio.sleep(closed_ttl(status))
+            continue
+        if announced != "open":
+            await send({"type": "hello", "mode": "poll", "source": "yahoo", "interval_s": seconds})
+            announced = "open"
         try:
             q = await providers.yahoo_quote(inst)          # bypasses the cache on purpose
             await send({"type": "tick", "price": q["price"], "change_pct": q["change_pct"]})
+            failures = 0
         except DataError as exc:
-            await send({"type": "status", "state": "error", "message": str(exc)})
+            # An unknown ticker will never start working: tell the client to stop and stop ourselves.
+            fatal = "does not know the symbol" in str(exc)
+            await send({"type": "status", "state": "error", "message": str(exc), "fatal": fatal})
+            if fatal:
+                return
+            failures += 1
+            await asyncio.sleep(min(300, seconds * 2 ** failures))      # transient errors: back off, do not hammer
+            continue
         await asyncio.sleep(seconds)

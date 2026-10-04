@@ -6,12 +6,18 @@ import type { Timeframe } from "../types";
 // Slower than the live feed on purpose: this refresh recomputes indicators, liquidity and the AI insight.
 const POLL: Record<Timeframe, number> = { "1m": 8_000, "5m": 10_000, "15m": 15_000, "30m": 15_000, "1H": 15_000, "4H": 30_000, "1D": 60_000, "1W": 120_000 };
 
+// A closed market cannot produce new data, so stop polling for it. One slow check remains so a page left open notices the open.
+const CLOSED_RECHECK_MS = 5 * 60_000;
+// A query that is failing (e.g. an unknown ticker) is slowed the same way instead of retrying every few seconds.
+const everyMs = (tf: Timeframe) => (q: { state: { status: string; data?: { data_status?: { market_open?: boolean | null } } } }) =>
+  q.state.status === "error" || q.state.data?.data_status?.market_open === false ? CLOSED_RECHECK_MS : POLL[tf];
+
 export const useHistory = (symbol: string, tf: Timeframe) =>
-  useQuery({ queryKey: ["history", symbol, tf], queryFn: () => fetchHistory(symbol, tf), refetchInterval: POLL[tf], placeholderData: keepPreviousData });
+  useQuery({ queryKey: ["history", symbol, tf], queryFn: () => fetchHistory(symbol, tf), refetchInterval: everyMs(tf), placeholderData: keepPreviousData });
 
 export const useAnalysisData = (symbol: string, tf: Timeframe, accountSize?: number, riskPct?: number) =>
   useQuery({ queryKey: ["analysis", symbol, tf, accountSize, riskPct], queryFn: () => fetchAnalysis(symbol, tf, accountSize, riskPct),
-             refetchInterval: POLL[tf], placeholderData: keepPreviousData });
+             refetchInterval: everyMs(tf), placeholderData: keepPreviousData });
 
 export const usePulse = () => useQuery({ queryKey: ["pulse"], queryFn: fetchPulse, refetchInterval: 30_000 });
 export const useUniverse = () => useQuery({ queryKey: ["universe"], queryFn: fetchUniverse, staleTime: Infinity });

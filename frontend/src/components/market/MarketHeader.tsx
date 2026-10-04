@@ -31,7 +31,7 @@ export default function MarketHeader({ analysis, symbol }: { analysis?: Analysis
         <div className="mt-1 flex items-baseline gap-3">
           <span className="tnum text-3xl font-semibold tracking-tight">{price === undefined ? "—" : `${inst?.currency_symbol ?? ""}${fmtPrice(price, p)}`}</span>
           {q && <span className={cx("tnum text-sm font-medium", tone(q.change_pct))}>{fmtPct(q.change_pct)} <span className="text-faint">24h</span></span>}
-          <LivePill state={isLive ? live.state : "connecting"} />
+          <LivePill state={analysis?.data_status?.market_open === false ? "closed" : isLive ? live.state : "connecting"} opensAt={analysis?.data_status?.opens_at} />
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -47,16 +47,18 @@ export default function MarketHeader({ analysis, symbol }: { analysis?: Analysis
 const PILL: Record<string, [string, string, string]> = {
   live: ["LIVE", "text-up border-up/40 bg-up/10", "bg-up dot-live"],
   polling: ["LIVE · 5s", "text-warn border-warn/40 bg-warn/10", "bg-warn dot-live"],
+  closed: ["Market closed", "text-mute border-line bg-raised", "bg-faint"],
   connecting: ["Connecting…", "text-mute border-line bg-raised", "bg-faint"],
   offline: ["Reconnecting…", "text-mute border-line bg-raised", "bg-faint"],
 };
 
 /** LIVE = streaming candle (crypto). LIVE · 5s = price polled every 5 s (stocks, indices, metals). */
-function LivePill({ state }: { state: string }) {
+function LivePill({ state, opensAt }: { state: string; opensAt?: number | null }) {
   const [label, tone, dot] = PILL[state] ?? PILL.connecting;
   return (
     <span className={cx("inline-flex items-center gap-1.5 self-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", tone)}
-      title={state === "polling" ? "No free stream exists for this market, so the price refreshes every 5 seconds." : undefined}>
+      title={state === "polling" ? "No free stream exists for this market, so the price refreshes every 5 seconds."
+        : state === "closed" ? `Nothing is being fetched while the market is closed.${opensAt ? ` Opens ${new Date(opensAt * 1000).toLocaleString()}.` : ""}` : undefined}>
       <span className={cx("h-1.5 w-1.5 rounded-full", dot)} />{label}
     </span>
   );

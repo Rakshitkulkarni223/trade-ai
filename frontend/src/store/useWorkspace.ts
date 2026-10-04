@@ -3,7 +3,7 @@ import type { ChartRef, ChatMessage, Timeframe } from "../types";
 
 /** One shared context: the Trading Workspace and the AI Workspace both read symbol + timeframe from here,
  *  so "Analyze this chart" always means the chart the user is looking at. */
-export type LiveState = "connecting" | "live" | "polling" | "offline";
+export type LiveState = "connecting" | "live" | "polling" | "closed" | "offline";
 export interface Live { key: string; price: number | null; state: LiveState; at: number }
 
 export interface Layers {

@@ -3,6 +3,7 @@ oldest first). Nothing here invents data: on failure it raises DataError and the
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 import httpx
@@ -27,6 +28,18 @@ YAHOO_PLAN = {
 HEADERS = {"User-Agent": "Mozilla/5.0 (TradeAI market copilot)"}
 
 _client: Optional[httpx.AsyncClient] = None
+
+
+# symbol -> {"start","end","last_trade","fetched_at"}: regular-session window and last trade time, taken from the
+# metadata of every Yahoo response we already fetch, so knowing whether a market is open costs no extra requests.
+MARKET_META: dict[str, dict] = {}
+
+
+def remember_meta(symbol: str, meta: dict) -> None:
+    period = ((meta.get("currentTradingPeriod") or {}).get("regular")) or {}
+    if period.get("start") and period.get("end"):
+        MARKET_META[symbol] = {"start": int(period["start"]), "end": int(period["end"]),
+                               "last_trade": meta.get("regularMarketTime"), "fetched_at": time.time()}
 
 
 class DataError(RuntimeError):
@@ -140,6 +153,7 @@ def _yahoo_rows(res: dict) -> list[dict]:
 async def yahoo_candles(inst: Instrument, tf: str, limit: int) -> list[dict]:
     interval, rng, resample_to = YAHOO_PLAN[tf]
     res = await _yahoo_chart(inst.symbol, interval, rng)
+    remember_meta(inst.symbol, res.get("meta", {}))
     rows = _yahoo_rows(res)
     if resample_to:
         rows = resample(rows, resample_to)
@@ -151,6 +165,7 @@ async def yahoo_candles(inst: Instrument, tf: str, limit: int) -> list[dict]:
 async def yahoo_quote(inst: Instrument) -> dict:
     res = await _yahoo_chart(inst.symbol, "1d", "5d")
     meta, rows = res.get("meta", {}), _yahoo_rows(res)
+    remember_meta(inst.symbol, meta)
     price = meta.get("regularMarketPrice") or (rows[-1]["c"] if rows else None)
     prev = meta.get("chartPreviousClose") or meta.get("previousClose") or (rows[-2]["c"] if len(rows) > 1 else None)
     if price is None:

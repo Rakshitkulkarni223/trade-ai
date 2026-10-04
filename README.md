@@ -70,6 +70,10 @@ cd frontend && npm run build           # typecheck + production build
 - Live feed: crypto streams from Binance through the backend (`/ws/market/{symbol}`), updating the forming candle about every 2 s.
   Stocks, indices and metals have no free stream, so their price is polled every 5 s (the header shows `LIVE · 5s`), and Yahoo may delay
   some exchanges. Indicators, liquidity and the AI insight recompute on a 8 s – 2 min refresh, not per tick.
+- **Closed markets are left alone.** Open/closed comes from the regular-session window in Yahoo's own metadata plus a last-trade check (so
+  futures that report a nominal session but have not traded are also treated as closed). While closed, the live feed and the page's
+  polling stop, answers are cached until the open, and the header says `Market closed`; one slow check lets an open page notice the open.
+  An unknown ticker is reported once and not retried.
 - Yahoo limits intraday history (1m ≈ 5 days, 5–30m ≈ 1 month, 1H ≈ 6 months) and is unofficial; it can change without notice.
 - Detector parameters (swing size, FVG minimum size, sweep window, 2.5 ATR "extended" rule, 4 ATR stop limit) are sensible defaults,
   not tuned or backtested. Treat output as a structured read of the chart.

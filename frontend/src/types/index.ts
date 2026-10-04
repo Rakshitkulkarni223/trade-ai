@@ -11,7 +11,7 @@ export interface Quote {
   error?: string;
 }
 export interface Candle { t: number; o: number; h: number; l: number; c: number; v: number }
-export interface DataStatus { as_of: number; age_seconds: number; stale: boolean; note: string | null }
+export interface DataStatus { as_of: number; age_seconds: number; stale: boolean; note: string | null; market_open?: boolean | null; opens_at?: number | null }
 
 export type ChartRef = { kind: "liquidity" | "structure" | "fvg" | "plan" | "indicator"; id: string };
 
