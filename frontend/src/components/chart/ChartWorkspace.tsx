@@ -15,6 +15,60 @@ const C = {
   liq: "#38bdf8", fvg: "#fb923c", struct: "#a78bfa", warn: "#f5a524", ai: "#8b5cf6",
 };
 
+/** One Supertrend Buy / Sell signal: a glowing node on the line, a hairline stem, and a dark glass chip with an accent
+ *  border, an arrow and the word. `full` false draws only a small arrow tile. Flips to the other side of the line when the
+ *  chip would otherwise leave the chart. */
+function drawSignal(ctx: CanvasRenderingContext2D, o: { x: number; y: number; buy: boolean; full: boolean; plotRight: number; plotBottom: number }) {
+  const accent = o.buy ? "#34d399" : "#fb7185", text = o.buy ? "Buy" : "Sell";
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.font = "700 11px Inter, system-ui, sans-serif";
+  if ("letterSpacing" in ctx) (ctx as unknown as { letterSpacing: string }).letterSpacing = "0.4px";
+  const arrow = 9, padX = 8;
+  const w = o.full ? padX + arrow + 6 + ctx.measureText(text).width + padX : 18;
+  const h = o.full ? 22 : 18, gap = o.full ? 16 : 11;
+
+  let below = o.buy;                                              // buy hangs under the support line, sell sits over the resistance line
+  if (below && o.y + gap + h > o.plotBottom) below = false;
+  if (!below && o.y - gap - h < 4) below = true;
+  const top = below ? o.y + gap : o.y - gap - h;
+  const left = Math.min(Math.max(o.x - w / 2, 2), o.plotRight - w - 2);
+  const stemFrom = below ? o.y + 6 : o.y - 6, stemTo = below ? top : top + h;
+
+  // stem
+  ctx.strokeStyle = hexA(accent, 0.55); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(o.x, stemFrom); ctx.lineTo(o.x, stemTo); ctx.stroke();
+
+  // node on the line: glow, dark ring, bright core
+  ctx.shadowColor = hexA(accent, 0.85); ctx.shadowBlur = 10;
+  ctx.fillStyle = "rgba(10,12,17,.95)"; ctx.strokeStyle = accent; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(o.x, o.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(o.x, o.y, 2.1, 0, Math.PI * 2); ctx.fill();
+
+  // chip body: glass gradient, accent hairline, soft outer glow
+  const g = ctx.createLinearGradient(0, top, 0, top + h);
+  g.addColorStop(0, "rgba(30,35,46,.96)"); g.addColorStop(1, "rgba(12,14,20,.96)");
+  ctx.shadowColor = hexA(accent, o.full ? 0.35 : 0.25); ctx.shadowBlur = o.full ? 10 : 6;
+  ctx.fillStyle = g; ctx.strokeStyle = hexA(accent, o.full ? 0.9 : 0.65); ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.roundRect(left, top, w, h, o.full ? 8 : 6); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // arrow glyph (and the word, on a full chip)
+  const ax = o.full ? left + padX + arrow / 2 : left + w / 2, ay = top + h / 2;
+  ctx.fillStyle = accent;
+  ctx.save();
+  ctx.translate(ax, ay);
+  if (!o.buy) ctx.rotate(Math.PI);                                // one up-pointing triangle; Sell is the same shape turned over
+  ctx.beginPath(); ctx.moveTo(0, -4.4); ctx.lineTo(4.4, 3.4); ctx.lineTo(-4.4, 3.4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if (o.full) {
+    ctx.fillStyle = "#f4f6fb"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(text, left + padX + arrow + 6, ay + 0.5);
+  }
+  ctx.restore();
+}
+
 /** The chart gets the few levels that matter now; the Liquidity Map panel lists everything. Levels at the same
  *  price (e.g. PWH and a swing high) are merged into one line with a combined label. */
 function pickLevels(levels: LiquidityLevel[], price: number, precision: number, highlightId?: string | null) {
@@ -187,34 +241,13 @@ export default function ChartWorkspace({ candles, analysis, precision, loading, 
         };
         run(a.series.st_up, "#26be82"); run(a.series.st_dn, "#f45064");
 
-        // Buy / Sell signals: a dot where the Supertrend flips, and a solid pill (white border, pointer) like the TradingView script
-        ctx.font = "800 11px Inter, sans-serif";
-        for (const sg of a.supertrend.signals) {
+        // Buy / Sell signals. The latest three get a full chip; older ones shrink to an arrow tile so a busy 5m chart stays readable.
+        const sigs = a.supertrend.signals, plotBottom = h - ts.height() - 4;
+        sigs.forEach((sg, idx) => {
           const xx = x(sg.t), yy = y(sg.price);
-          if (xx === null || yy === null || xx < -30 || xx > plotRight + 10) continue;
-          const buy = sg.type === "buy", fill = buy ? "#15a05c" : "#e0364a", text = buy ? "BUY" : "SELL";
-          const w = ctx.measureText(text).width + 18, ph = 20, gap = 14;
-          const plotBottom = h - ts.height() - 4;                    // above the time axis
-          // Buy normally hangs below the support line and Sell sits above the resistance line; flip when that would leave the chart
-          let below = buy;
-          if (below && yy + gap + ph > plotBottom) below = false;
-          if (!below && yy - gap - ph < 4) below = true;
-          const top = below ? yy + gap : yy - gap - ph;
-          const left = Math.min(Math.max(xx - w / 2, 2), plotRight - w - 2);
-          ctx.save();
-          ctx.setLineDash([]);
-          ctx.fillStyle = fill; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.6; ctx.lineJoin = "round";
-          ctx.beginPath(); ctx.arc(xx, yy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();          // the dot on the line
-          ctx.beginPath();
-          ctx.roundRect(left, top, w, ph, 5);
-          ctx.fill(); ctx.stroke();
-          const edge = below ? top : top + ph, tipY = below ? top - 7 : top + ph + 7;               // pointer toward the dot
-          ctx.beginPath(); ctx.moveTo(xx - 5, edge); ctx.lineTo(xx, tipY); ctx.lineTo(xx + 5, edge); ctx.closePath(); ctx.fill(); ctx.stroke();
-          ctx.fillRect(xx - 4, below ? top - 0.5 : top + ph - 2, 8, 2.5);                            // hide the seam between pill and pointer
-          ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(text, left + w / 2, top + ph / 2 + 0.5);
-          ctx.restore();
-        }
+          if (xx === null || yy === null || xx < -30 || xx > plotRight + 10) return;
+          drawSignal(ctx, { x: xx, y: yy, buy: sg.type === "buy", full: sigs.length - 1 - idx < 3, plotRight, plotBottom });
+        });
       }
       if (L.fvg) for (const g of a.fvg) {
         const y1 = y(g.high), y2 = y(g.low);
