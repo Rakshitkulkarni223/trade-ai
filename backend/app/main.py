@@ -13,6 +13,7 @@ from .config import get_settings
 from .db.database import SessionLocal, init_db
 from .routers import ai, analysis, market, paper, screener, stream, watchlist
 from .services import cache, llm, providers
+from .web import PasswordGate, mount_frontend
 from .services.providers import DataError
 
 logging.basicConfig(level="INFO", format="%(asctime)s %(levelname)-7s %(name)s | %(message)s")
@@ -60,3 +61,12 @@ def settings() -> dict:
     s = get_settings()
     return {"account_size": s.account_size, "max_risk_per_trade_pct": s.max_risk_per_trade_pct,
             "max_position_pct": s.max_position_pct, "max_daily_loss_pct": s.max_daily_loss_pct}
+
+
+# ---- deployment (no effect in local development unless these are set)
+_settings = get_settings()
+if _settings.static_dir:
+    if not mount_frontend(app, _settings.static_dir):
+        logging.getLogger("tradeai").warning("STATIC_DIR %s has no index.html; serving the API only", _settings.static_dir)
+if _settings.app_password and _settings.app_password.get_secret_value():
+    app.add_middleware(PasswordGate, password=_settings.app_password.get_secret_value())

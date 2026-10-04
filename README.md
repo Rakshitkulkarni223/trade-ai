@@ -45,6 +45,11 @@ for LLM-written explanations. Without one, a deterministic rules-based explainer
 
 Sector and market-cap screening are not offered: the free providers don't supply fundamentals.
 
+## Deploy
+
+Railway (or any Docker host): see [docs/deploy-railway.md](docs/deploy-railway.md). One image serves the API and the built frontend; set `DATABASE_URL`
+(Postgres) and **`APP_PASSWORD`** (the AI endpoints cost money).
+
 ## Architecture
 
 ```
