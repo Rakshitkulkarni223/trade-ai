@@ -31,7 +31,7 @@ app = FastAPI(title="TradeAI API", version="1.0.0", lifespan=lifespan,
               description="AI market copilot: charts, liquidity, structure, FVG and explainable setups. "
                           "Information only, not investment advice.")
 app.add_middleware(CORSMiddleware, allow_origins=[get_settings().frontend_url, "http://127.0.0.1:5173"],
-                   allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"])
+                   allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["*"])
 
 
 @app.exception_handler(DataError)

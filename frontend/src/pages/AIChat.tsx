@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import AIChat from "../components/ai/AIChat";
 import AIInsightCard from "../components/ai/AIInsightCard";
+import ChatActions from "../components/ai/ChatActions";
+import ChatHistory from "../components/ai/ChatHistory";
 import { DataStatusBanner, ErrorState, Skeleton } from "../components/common/ui";
 import { useAI } from "../hooks/useAI";
 import { useAnalysisData } from "../hooks/useMarketData";
@@ -13,8 +15,11 @@ import { useWorkspace } from "../store/useWorkspace";
 export default function AIWorkspace() {
   const { symbol, timeframe, setTimeframe, accountSize, riskPct, setHighlight } = useWorkspace();
   const { data, error, isPending, refetch } = useAnalysisData(symbol, timeframe, accountSize, riskPct);
-  const { send, why } = useAI();
+  const { send, why, newChat, open, conversationId } = useAI();
   const [insightOpen, setInsightOpen] = useState(true);
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const startNew = () => { newChat(); setView("chat"); };
+  const openSaved = async (id: number) => { await open(id); setView("chat"); };
 
   return (
     <div className="mx-auto grid h-full max-w-6xl gap-5 p-4 md:p-6 lg:grid-cols-[380px_minmax(0,1fr)]">
@@ -33,8 +38,14 @@ export default function AIWorkspace() {
           <AIInsightCard analysis={data} open={insightOpen} onOpenChange={setInsightOpen} onExplain={() => send("", "analyze")} onWhy={(r) => { setHighlight(r); why(r); }} />
         </>)}
       </div>
-      <div className="card flex min-h-[70vh] flex-col p-4 lg:h-[calc(100vh-7rem)]">
-        <AIChat className="min-h-0 flex-1" />
+      <div className="card flex min-h-[70vh] flex-col gap-3 p-4 lg:h-[calc(100vh-7rem)]">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">{view === "history" ? "Chat history" : "Conversation"}</h2>
+          <ChatActions historyOpen={view === "history"} onNew={startNew} onToggleHistory={() => setView(view === "history" ? "chat" : "history")} />
+        </div>
+        {view === "history"
+          ? <ChatHistory activeId={conversationId} onOpen={openSaved} onNew={startNew} onDeleted={(id) => { if (id === conversationId) newChat(); }} />
+          : <AIChat className="min-h-0 flex-1" />}
       </div>
     </div>
   );

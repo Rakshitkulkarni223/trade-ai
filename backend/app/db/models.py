@@ -27,6 +27,8 @@ class Conversation(Base):
     symbol: Mapped[str] = mapped_column(String(32))
     timeframe: Mapped[str] = mapped_column(String(8))
     created_at: Mapped[int] = mapped_column(Integer, default=_now)
+    updated_at: Mapped[int] = mapped_column(Integer, default=_now)
+    title: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)      # first question, or renamed by the user
     # last structured context the AI saw; lets follow-ups reason about the same chart
     analysis_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", order_by="Message.id",

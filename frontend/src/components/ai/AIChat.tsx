@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { QUICK_ACTIONS, useAI } from "../../hooks/useAI";
+import { useAnalysisData } from "../../hooks/useMarketData";
+import { exampleLevel, formatLevel } from "../../lib/example";
 import { useWorkspace } from "../../store/useWorkspace";
 import type { AnalysisCard, ChatMessage, CompareRow } from "../../types";
 import { cx, fmtPrice } from "../../lib/format";
@@ -85,8 +87,13 @@ function Bubble({ m, onShow }: { m: ChatMessage; onShow: (ref: NonNullable<ChatM
 
 /** One scrolling thread (optional `header` first, e.g. the insight card), with the input pinned underneath. */
 export default function AIChat({ className, header, pinHeader = false, showActions = true }: { className?: string; header?: ReactNode; pinHeader?: boolean; showActions?: boolean }) {
-  const { symbol, timeframe, setHighlight } = useWorkspace();
-  const { messages, busy, send, reset } = useAI();
+  const { symbol, timeframe, setHighlight, accountSize, riskPct } = useWorkspace();
+  const { messages, busy, send } = useAI();
+  // Same query the copilot already runs, so this is a cache read: it gives the friendly name and a price to build examples from.
+  const analysis = useAnalysisData(symbol, timeframe, accountSize, riskPct).data;
+  const name = analysis?.instrument.name ?? symbol;
+  const lvl = exampleLevel(analysis?.price);
+  const example = lvl ? `What if it breaks ${formatLevel(lvl)}?` : null;
   const [text, setText] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const seen = useRef(messages.length);
@@ -110,8 +117,9 @@ export default function AIChat({ className, header, pinHeader = false, showActio
         {header && !pinHeader && header}
         {messages.length === 0 ? (
           <div className="pt-1">
-            <p className="text-xs font-semibold text-ink">Ask about {symbol} <span className="font-normal text-faint">· {timeframe}</span></p>
-            <p className="mt-0.5 text-[11.5px] leading-relaxed text-faint">Pick a question or type your own, like “what if it breaks 83,000?”.</p>
+            <p className="text-xs font-semibold text-ink">Ask about {name} <span className="font-normal text-faint">· {timeframe}</span></p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-faint">Pick a question below or type your own{example ? ", for example:" : "."}</p>
+            {example && <button className="chip mt-2 !text-ink" disabled={busy} onClick={() => send(example)}>{example}</button>}
             {showActions && <div className="mt-2.5"><AIQuickActions wrap disabled={busy} onPick={(id) => send("", id)} /></div>}
           </div>
         ) : messages.map((m, i) => <Bubble key={i} m={m} onShow={(refs) => refs && refs[0] && setHighlight(refs[0])} />)}
@@ -120,13 +128,12 @@ export default function AIChat({ className, header, pinHeader = false, showActio
       <div className="mt-2 space-y-2 border-t border-line pt-3">
         {showActions && messages.length > 0 && <AIQuickActions disabled={busy} onPick={(id) => send("", id)} />}
         <div className="flex items-end gap-2">
-          <textarea rows={1} className="input max-h-28 min-h-[44px] resize-none" placeholder={`Ask anything about ${symbol}…`} value={text}
+          <textarea rows={1} className="input max-h-28 min-h-[44px] resize-none" placeholder={`Ask anything about ${name}…`} value={text}
             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
           <button className="btn-ai h-[44px] shrink-0 px-5" onClick={submit} disabled={busy || !text.trim()} aria-label="Send">Send</button>
         </div>
         <div className="flex items-center justify-between px-1 text-[10px] text-faint">
           <span>Information only, not financial advice.</span>
-          {messages.length > 0 && <button className="hover:text-mute" onClick={reset}>Clear chat</button>}
         </div>
       </div>
     </div>

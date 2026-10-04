@@ -1,13 +1,16 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { aiChat, aiExplain } from "../api/ai";
+import { aiChat, aiExplain, getConversation } from "../api/ai";
 import { useWorkspace } from "../store/useWorkspace";
 import type { ChartRef } from "../types";
 
 /** Chat actions for the copilot. Messages live in the shared workspace store, so the side panel and the
  *  AI workspace show the same thread. The backend keeps the conversation and the analysis context it saw,
- *  so follow-ups like "what if it breaks 78,000?" refer to the same chart. */
+ *  so follow-ups like "what if it breaks that level?" refer to the same chart. */
 export function useAI() {
-  const { symbol, timeframe, conversationId, setConversationId, messages, setMessages, busy, setBusy } = useWorkspace();
+  const { symbol, timeframe, conversationId, setConversationId, messages, setMessages, busy, setBusy, newChat, restoreConversation } = useWorkspace();
+  const qc = useQueryClient();
+  const refreshHistory = useCallback(() => qc.invalidateQueries({ queryKey: ["conversations"] }), [qc]);
 
   const send = useCallback(async (message: string, action?: string, compareWith?: string) => {
     setMessages((m) => [...m, { role: "user", content: message || actionLabel(action) }, { role: "assistant", content: "", pending: true }]);
@@ -19,8 +22,8 @@ export function useAI() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Something went wrong.";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `I couldn't complete that: ${msg}`, payload: { intent: "error", source: "error", refused: true } }]);
-    } finally { setBusy(false); }
-  }, [symbol, timeframe, conversationId, setConversationId, setMessages, setBusy]);
+    } finally { setBusy(false); refreshHistory(); }       // the server saved the turn either way
+  }, [symbol, timeframe, conversationId, setConversationId, setMessages, setBusy, refreshHistory]);
 
   const why = useCallback(async (ref: ChartRef) => {
     setMessages((m) => [...m, { role: "user", content: "Why?" }, { role: "assistant", content: "", pending: true }]);
@@ -33,8 +36,14 @@ export function useAI() {
     } finally { setBusy(false); }
   }, [symbol, timeframe, setMessages, setBusy]);
 
-  const reset = useCallback(() => { setMessages(() => []); setConversationId(null); }, [setMessages, setConversationId]);
-  return { messages, busy, send, why, reset };
+  /** Open a saved conversation: its messages, and the symbol and timeframe it was about. */
+  const open = useCallback(async (id: number) => {
+    const c = await getConversation(id);
+    restoreConversation({ id: c.id, symbol: c.symbol, timeframe: c.timeframe,
+                          messages: c.messages.map((m) => ({ role: m.role, content: m.content, payload: m.payload })) });
+  }, [restoreConversation]);
+
+  return { messages, busy, send, why, newChat, open, conversationId };
 }
 
 export const QUICK_ACTIONS: { id: string; label: string }[] = [

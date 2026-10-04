@@ -25,6 +25,8 @@ interface State {
   symbol: string; timeframe: Timeframe; layers: Layers; highlight: ChartRef | null;
   aiOpen: boolean; conversationId: number | null; accountSize: number; riskPct: number;
   messages: ChatMessage[]; busy: boolean; live: Live; setLive: (l: Partial<Live>) => void;
+  newChat: () => void;
+  restoreConversation: (c: { id: number; symbol: string; timeframe: Timeframe; messages: ChatMessage[] }) => void;
   setMessages: (fn: (m: ChatMessage[]) => ChatMessage[]) => void; setBusy: (b: boolean) => void;
   setSymbol: (s: string) => void; setTimeframe: (t: Timeframe) => void;
   toggleLayer: (k: keyof Layers) => void; setAllLayers: (on: boolean) => void; resetLayers: () => void; setHighlight: (r: ChartRef | null) => void;
@@ -39,6 +41,10 @@ export const useWorkspace = create<State>((set, get) => ({
   highlight: null, aiOpen: false, conversationId: null, accountSize: saved.accountSize, riskPct: saved.riskPct,
   messages: [], busy: false,
   live: { key: "", price: null, state: "connecting", at: 0 }, setLive: (l) => set({ live: { ...get().live, ...l } }),
+  // A new chat keeps the chart where it is; the old thread stays saved in the history.
+  newChat: () => set({ messages: [], conversationId: null, highlight: null, busy: false }),
+  // Reopening a saved conversation brings its symbol and timeframe back with it, without wiping the thread.
+  restoreConversation: (c) => { set({ symbol: c.symbol, timeframe: c.timeframe, conversationId: c.id, messages: c.messages, highlight: null, busy: false }); persist(get()); },
   setMessages: (fn) => set({ messages: fn(get().messages) }), setBusy: (busy) => set({ busy }),
   setSymbol: (symbol) => { set({ symbol, conversationId: null, highlight: null, messages: [] }); persist(get()); },
   setTimeframe: (timeframe) => { set({ timeframe, highlight: null }); persist(get()); },

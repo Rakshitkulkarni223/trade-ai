@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -149,17 +150,38 @@ def _find_other_symbol(text: str, current: str, explicit: Optional[str]) -> Opti
     others = [s for s in found if s != current]
     if others:
         return others[0]
+    return _default_peer(current)
+
+
+def _default_peer(current: str) -> Optional[str]:
+    """The natural thing to compare with when none is named: BTC<->ETH, an index with its sibling, or a market peer."""
     if current == "BTCUSDT":
         return "ETHUSDT"
-    return "BTCUSDT" if current.endswith("USDT") else None
+    inst = universe.resolve(current)
+    pairs = {"^NSEI": "^NSEBANK", "^NSEBANK": "^NSEI", "^GSPC": "^IXIC", "^IXIC": "^GSPC", "^BSESN": "^NSEI",
+             "^DJI": "^GSPC", "GC=F": "SI=F", "SI=F": "GC=F", "HG=F": "GC=F"}
+    if current in pairs:
+        return pairs[current]
+    if inst.category == "Crypto":
+        return "BTCUSDT"
+    peers = [i.symbol for i in universe.INSTRUMENTS if i.category == inst.category and i.symbol != inst.symbol]
+    return peers[0] if peers else None
 
 
 def _history(conv: models.Conversation) -> list[dict]:
     return [{"role": m.role, "content": m.content} for m in conv.messages[-8:]]
 
 
+def _title_from(text: str) -> str:
+    t = " ".join(text.split())
+    return t if len(t) <= 80 else t[:77].rstrip() + "…"
+
+
 def _store(db: Session, conv: models.Conversation, user_text: str, reply: str, payload: dict,
            context: Optional[dict]) -> None:
+    conv.updated_at = int(time.time())
+    if not conv.title and user_text.strip():
+        conv.title = _title_from(user_text)               # the first question names the conversation
     db.add(models.Message(conversation_id=conv.id, role="user", content=user_text))
     db.add(models.Message(conversation_id=conv.id, role="assistant", content=reply, payload=payload))
     if context is not None:
@@ -200,7 +222,8 @@ async def chat(db: Session, symbol: str, timeframe: str, message: str, action: O
     if intent == "compare":
         other = _find_other_symbol(message, inst.symbol, compare_with)
         if not other:
-            reply = "Which instrument should I compare it with? For example: “Compare with ETH”."
+            reply = "Which instrument should I compare it with? Name one, for example: “Compare with " + \
+                    (universe.INSTRUMENTS[0].name if inst.symbol != universe.INSTRUMENTS[0].symbol else universe.INSTRUMENTS[1].name) + "”."
             payload["source"] = "backend"
             _store(db, conv, user_text, reply, payload, a["context"])
             return {"conversation_id": conv.id, "reply": reply, "payload": payload}
@@ -252,6 +275,49 @@ def get_conversation(db: Session, conversation_id: int) -> Optional[dict]:
     conv = db.get(models.Conversation, conversation_id)
     if not conv:
         return None
-    return {"id": conv.id, "symbol": conv.symbol, "timeframe": conv.timeframe,
+    return {"id": conv.id, "title": conv.title, "symbol": conv.symbol, "timeframe": conv.timeframe,
+            "updated_at": conv.updated_at,
             "messages": [{"role": m.role, "content": m.content, "payload": m.payload, "created_at": m.created_at}
                          for m in conv.messages]}
+
+
+def list_conversations(db: Session, q: str = "", limit: int = 100) -> list[dict]:
+    """Newest first. Conversations with no messages (a failed first turn) are not listed."""
+    from sqlalchemy import func, select
+    rows = db.execute(
+        select(models.Conversation, func.count(models.Message.id))
+        .join(models.Message, models.Message.conversation_id == models.Conversation.id)
+        .group_by(models.Conversation.id)
+        .order_by(models.Conversation.updated_at.desc(), models.Conversation.id.desc())
+        .limit(max(1, min(limit, 200)))).all()
+    out = []
+    needle = q.strip().lower()
+    for conv, n in rows:
+        title = conv.title
+        if not title:                                     # older rows: derive the title from the first question
+            first = db.scalar(select(models.Message.content).where(models.Message.conversation_id == conv.id,
+                                                                    models.Message.role == "user").order_by(models.Message.id).limit(1))
+            title = _title_from(first) if first else "Conversation"
+        if needle and needle not in f"{title} {conv.symbol}".lower():
+            continue
+        out.append({"id": conv.id, "title": title, "symbol": conv.symbol, "timeframe": conv.timeframe,
+                    "updated_at": conv.updated_at or conv.created_at, "message_count": n})
+    return out
+
+
+def rename_conversation(db: Session, conversation_id: int, title: str) -> Optional[dict]:
+    conv = db.get(models.Conversation, conversation_id)
+    if not conv:
+        return None
+    conv.title = _title_from(title)
+    db.commit()
+    return {"id": conv.id, "title": conv.title}
+
+
+def delete_conversation(db: Session, conversation_id: int) -> bool:
+    conv = db.get(models.Conversation, conversation_id)
+    if not conv:
+        return False
+    db.delete(conv)                                       # messages go with it (cascade)
+    db.commit()
+    return True

@@ -39,6 +39,7 @@ for LLM-written explanations. Without one, a deterministic rules-based explainer
 | Plan | Entry, invalidation, TP1–3 as R-multiples, sizing from your account size and risk %. All assumptions are returned. |
 | Copilot | A pinned verdict (headline, progress, market read) where **every missing condition says what would satisfy it and at which level**, plus quick actions + chat. Understands "what if it breaks 78,000?", "compare with ETH", "why WAIT?", "what changed?". **Why?** highlights the object on the chart. |
 | AI Lab / Screener | Scans a market; every hit lists the checks behind it. Plain-English queries become structured rules you can see. |
+| Chat history | **＋ New chat** and a **History** view in the copilot: every conversation is saved, grouped by day, searchable, and can be reopened (its symbol and timeframe come back with it), renamed or deleted. Titles come from your first question. |
 | Watchlist | Price, change, trend, liquidity and AI status. |
 | Paper analysis | Save an active plan, then see what later candles did to it (stop wins ties; no fees/slippage). |
 

@@ -1,5 +1,5 @@
-import type { AnalyzeResponse, ChatResponse, ChartRef, ScanResponse, Timeframe, TrackedSetup, WatchRow } from "../types";
-import { del, get, post } from "./client";
+import type { AnalyzeResponse, ChartRef, ChatMessage, ChatResponse, ScanResponse, Timeframe, TrackedSetup, WatchRow } from "../types";
+import { del, get, patch, post } from "./client";
 
 export const aiStatus = () => get<{ provider: string; llm: boolean; note: string | null }>("/api/ai/status");
 export const aiAnalyze = (symbol: string, timeframe: Timeframe, accountSize?: number, riskPct?: number) =>
@@ -25,3 +25,13 @@ export const fetchSetups = () =>
 export const trackSetup = (symbol: string, timeframe: Timeframe, note?: string) =>
   post<TrackedSetup>("/api/paper/setups", { symbol, timeframe, note });
 export const deleteSetup = (id: number) => del<{ deleted: number }>(`/api/paper/setups/${id}`);
+
+export interface ConversationSummary { id: number; title: string; symbol: string; timeframe: Timeframe; updated_at: number; message_count: number }
+export interface ConversationFull {
+  id: number; title: string | null; symbol: string; timeframe: Timeframe; updated_at: number;
+  messages: { role: "user" | "assistant"; content: string; payload: ChatMessage["payload"]; created_at: number }[];
+}
+export const listConversations = () => get<{ conversations: ConversationSummary[] }>("/api/ai/conversations");
+export const getConversation = (id: number) => get<ConversationFull>(`/api/ai/conversations/${id}`);
+export const renameConversation = (id: number, title: string) => patch<{ id: number; title: string }>(`/api/ai/conversations/${id}`, { title });
+export const deleteConversation = (id: number) => del<{ deleted: number }>(`/api/ai/conversations/${id}`);

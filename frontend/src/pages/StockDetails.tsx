@@ -18,7 +18,9 @@ import { useWorkspace } from "../store/useWorkspace";
 export default function StockDetails() {
   const { symbol: param } = useParams();
   const { symbol, timeframe, setSymbol, accountSize, riskPct } = useWorkspace();
-  useEffect(() => { if (param && param.toUpperCase() !== symbol.toUpperCase()) setSymbol(param); }, [param, symbol, setSymbol]);
+  // The URL sets the symbol when it changes; after that the store leads (e.g. reopening a saved conversation).
+  useEffect(() => { if (param) setSymbol(param); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [param]);
 
   const history = useHistory(symbol, timeframe);
   const analysis = useAnalysisData(symbol, timeframe, accountSize, riskPct);

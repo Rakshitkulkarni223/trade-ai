@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..agents import explanation_agent as expl, orchestrator
@@ -31,6 +32,33 @@ async def chat(req: ChatRequest, db: Session = Depends(get_session)) -> dict:
         raise HTTPException(422, "Send a message or an action.")
     return await orchestrator.chat(db, req.symbol, req.timeframe, req.message, req.action,
                                    req.conversation_id, req.compare_with)
+
+
+class RenameBody(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+@router.get("/conversations")
+def conversations(q: str = Query("", max_length=80), limit: int = Query(100, ge=1, le=200),
+                  db: Session = Depends(get_session)) -> dict:
+    return {"conversations": orchestrator.list_conversations(db, q, limit)}
+
+
+@router.patch("/conversations/{conversation_id}")
+def rename(conversation_id: int, body: RenameBody, db: Session = Depends(get_session)) -> dict:
+    if not body.title.strip():
+        raise HTTPException(422, "A title cannot be empty.")
+    out = orchestrator.rename_conversation(db, conversation_id, body.title)
+    if not out:
+        raise HTTPException(404, "Conversation not found.")
+    return out
+
+
+@router.delete("/conversations/{conversation_id}")
+def delete(conversation_id: int, db: Session = Depends(get_session)) -> dict:
+    if not orchestrator.delete_conversation(db, conversation_id):
+        raise HTTPException(404, "Conversation not found.")
+    return {"deleted": conversation_id}
 
 
 @router.get("/conversations/{conversation_id}")
